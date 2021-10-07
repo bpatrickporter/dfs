@@ -1,39 +1,49 @@
 package main
 
 import (
-	"chat/messages"
+	"bufio"
+	"encoding/binary"
+	"file_transfer/messages"
 	"fmt"
+	"google.golang.org/protobuf/proto"
+	"io"
 	"log"
 	"net"
+	"os"
+	"strconv"
+	"strings"
 )
 
-var userMap map[string]*messages.MessageHandler
+func ReceiveMetadata(conn net.Conn) (*messages.Metadata, error) {
+	prefix := make([]byte, 8)
+	conn.Read(prefix)
 
-func handleClient(msgHandler *messages.MessageHandler) {
-	defer msgHandler.Close()
+	payloadSize := binary.LittleEndian.Uint64(prefix)
+	payload := make([]byte, payloadSize)
+	conn.Read(payload)
 
-	for {
-		wrapper, _ := msgHandler.Receive()
+	metadata := &messages.Metadata{}
+	err := proto.Unmarshal(payload, metadata)
+	return metadata, err
+}
 
-		switch msg := wrapper.Msg.(type) {
-		case *messages.Wrapper_RegistrationMessage:
-			continue
-		case *messages.Wrapper_ChatMessage:
-			fmt.Println("<"+msg.ChatMessage.GetUsername()+"> ",
-				msg.ChatMessage.MessageBody)
-		case *messages.Wrapper_DirectMessage:
-			continue
-		case nil:
-			log.Println("Received an empty message, terminating client")
-			return
-		default:
-			log.Printf("Unexpected message type: %T", msg)
-		}
-
+func SendAck(ack *messages.Ack, conn net.Conn) error {
+	serialized, err := proto.Marshal(ack)
+	if err != nil {
+		return err
 	}
+
+	prefix := make([]byte, 8)
+	binary.LittleEndian.PutUint64(prefix, uint64(len(serialized)))
+	conn.Write(prefix)
+	conn.Write(serialized)
+
+	fmt.Println("Ack Sent")
+	return nil
 }
 
 func main() {
+
 	listener, err := net.Listen("tcp", ":9999")
 	if err != nil {
 		log.Fatalln(err.Error())
@@ -42,8 +52,34 @@ func main() {
 
 	for {
 		if conn, err := listener.Accept(); err == nil {
-			msgHandler := messages.NewMessageHandler(conn)
-			go handleClient(msgHandler)
+
+			metadata, _ := ReceiveMetadata(conn)
+			file_name := metadata.FileName
+			num_chunks := metadata.NumChunks
+			chunk_size := metadata.ChunkSize
+			check_sum := metadata.CheckSum
+
+			file, _ := os.Create("copy_" + file_name)
+			reader := bufio.NewReader(conn)
+			writer := bufio.NewWriter(file)
+
+			for i := 1; i < int(num_chunks); i ++ {
+				n, _ := io.CopyN(writer, reader, int64(chunk_size))
+				fmt.Println("writing.." + strconv.Itoa(int(n)))
+			}
+
+			file2, err := os.Open("copy_" + file_name)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+			check_sum2 := messages.GetCheckSum(*file2)
+
+			ack := &messages.Ack{CheckSumMatched: strings.Compare(check_sum, check_sum2) != 0}
+			err2 := SendAck(ack, conn)
+			fmt.Println("Ack status: " + strconv.FormatBool(ack.CheckSumMatched))
+			if err2 != nil {
+				return
+			}
 		}
 	}
 }

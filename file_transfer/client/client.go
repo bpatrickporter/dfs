@@ -2,43 +2,95 @@ package main
 
 import (
 	"bufio"
-	"chat/messages"
+	"encoding/binary"
+	"file_transfer/messages"
 	"fmt"
+	"google.golang.org/protobuf/proto"
+	"io"
 	"log"
 	"net"
 	"os"
+	"strconv"
 )
 
-func main() {
-	user := os.Args[1]
-	fmt.Println("Hello, " + user)
+func HandleArgs(args []string) (string, int, error){
+	chunkSize, err := strconv.Atoi(args[4])
+	return args[3], chunkSize, err
+}
 
-	host := os.Args[2]
-	conn, err := net.Dial("tcp", host+":9999") // connect to localhost port 9999
+func SendMetadata(metadata *messages.Metadata, conn net.Conn) error {
+	serialized, err := proto.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+
+	prefix := make([]byte, 8)
+	binary.LittleEndian.PutUint64(prefix, uint64(len(serialized)))
+	conn.Write(prefix)
+	conn.Write(serialized)
+
+	return nil
+}
+
+func ReceiveAck(conn net.Conn) {
+	for {
+		prefix := make([]byte, 8)
+		if b, _ := conn.Read(prefix); b == 0 {
+			break
+		}
+
+		payloadSize := binary.LittleEndian.Uint64(prefix)
+		payload := make([]byte, payloadSize)
+		conn.Read(payload)
+
+		ack := &messages.Ack{}
+		err := proto.Unmarshal(payload, ack)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+
+		fmt.Printf("Ack status: " + strconv.FormatBool(ack.CheckSumMatched))
+		return
+	}
+}
+
+func main() {
+
+	file, chunkSize, err := HandleArgs(os.Args)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
 
-	msgHandler := messages.NewMessageHandler(conn)
-
+	conn, err := net.Dial("tcp", os.Args[1] + ":" + os.Args[2])
+	if err != nil {
+		log.Fatalln(err.Error())
+		return
+	}
 	defer conn.Close()
 
-	scanner := bufio.NewScanner(os.Stdin)
+	f, _ := os.Open(file)
+	defer f.Close()
+
+	fileInfo, _ := f.Stat()
+	fileSize := fileInfo.Size()
+	numChunks := int32(fileSize)/int32(chunkSize)
+	checkSum := messages.GetCheckSum(*f)
+
+	var metadata *messages.Metadata
+	metadata = &messages.Metadata{FileName: file, NumChunks: numChunks, ChunkSize: int32(chunkSize), CheckSum: checkSum}
+	SendMetadata(metadata, conn)
+
+	f, _ = os.Open(file)
+	reader := bufio.NewReader(f)
+	writer := bufio.NewWriter(conn)
 	for {
-		fmt.Print("message> ")
-		result := scanner.Scan() // Reads up to a \n newline character
-		if result == false {
+		if _, err := io.CopyN(writer, reader, int64(chunkSize)); err != nil {
 			break
 		}
-
-		message := scanner.Text()
-		if len(message) != 0 {
-			msg := messages.Chat{Username: user, MessageBody: message}
-			wrapper := &messages.Wrapper{
-				Msg: &messages.Wrapper_ChatMessage{ChatMessage: &msg},
-			}
-			msgHandler.Send(wrapper)
-		}
 	}
+
+	fmt.Println("Waiting for ack..")
+	ReceiveAck(conn)
 }
+
