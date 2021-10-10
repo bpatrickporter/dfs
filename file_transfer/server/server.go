@@ -45,6 +45,8 @@ func SendAck(ack *messages.Ack, conn net.Conn) error {
 
 func main() {
 
+	home := os.Args[2]
+
 	listener, err := net.Listen("tcp", ":" + os.Args[1])
 	if err != nil {
 		log.Fatalln(err.Error())
@@ -60,7 +62,11 @@ func main() {
 			chunkSize := metadata.ChunkSize
 			checkSum := metadata.CheckSum
 
-			file, _ := os.Create("copy_" + fileName)
+			file, err := os.Create(home + fileName)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+
 			buffer := make([]byte, chunkSize)
 			writer := bufio.NewWriter(file)
 
@@ -82,7 +88,7 @@ func main() {
 				}
 			}
 
-			file2, err := os.Open("copy_" + fileName)
+			file2, err := os.Open(home + fileName)
 			if err != nil {
 				fmt.Println(err.Error())
 			}
