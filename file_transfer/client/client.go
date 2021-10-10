@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"file_transfer/messages"
 	"fmt"
@@ -49,7 +50,7 @@ func ReceiveAck(conn net.Conn) {
 			fmt.Println(err.Error())
 		}
 
-		fmt.Printf("Ack status: " + strconv.FormatBool(ack.CheckSumMatched))
+		fmt.Printf("Ack status: " + strconv.FormatBool(ack.CheckSumMatched) + "\n")
 		return
 	}
 }
@@ -82,10 +83,21 @@ func main() {
 	SendMetadata(metadata, conn)
 
 	f, _ = os.Open(file)
-	reader := bufio.NewReader(f)
+
+	buffer := make([]byte, chunkSize)
+	reader := bytes.NewReader(buffer)
 	writer := bufio.NewWriter(conn)
+
 	for {
-		if _, err := io.CopyN(writer, reader, int64(chunkSize)); err != nil {
+		numBytes, err := f.Read(buffer)
+		reader = bytes.NewReader(buffer)
+
+		if err != nil {
+			break
+		}
+		_, err = io.CopyN(writer, reader, int64(numBytes))
+		if err != nil {
+			fmt.Print(err.Error())
 			break
 		}
 	}

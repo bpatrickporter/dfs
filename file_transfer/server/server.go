@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"file_transfer/messages"
 	"fmt"
@@ -44,7 +45,7 @@ func SendAck(ack *messages.Ack, conn net.Conn) error {
 
 func main() {
 
-	listener, err := net.Listen("tcp", ":9999")
+	listener, err := net.Listen("tcp", ":" + os.Args[1])
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
@@ -54,27 +55,40 @@ func main() {
 		if conn, err := listener.Accept(); err == nil {
 
 			metadata, _ := ReceiveMetadata(conn)
-			file_name := metadata.FileName
-			num_chunks := metadata.NumChunks
-			chunk_size := metadata.ChunkSize
-			check_sum := metadata.CheckSum
+			fileName := metadata.FileName
+			//numChunks := metadata.NumChunks
+			chunkSize := metadata.ChunkSize
+			checkSum := metadata.CheckSum
 
-			file, _ := os.Create("copy_" + file_name)
-			reader := bufio.NewReader(conn)
+			file, _ := os.Create("copy_" + fileName)
+			buffer := make([]byte, chunkSize)
 			writer := bufio.NewWriter(file)
 
-			for i := 1; i < int(num_chunks); i ++ {
-				n, _ := io.CopyN(writer, reader, int64(chunk_size))
-				fmt.Println("writing.." + strconv.Itoa(int(n)))
+
+			for {
+				numBytes, err := conn.Read(buffer)
+				if err != nil {
+					fmt.Println(err.Error())
+					break
+				}
+				reader := bytes.NewReader(buffer)
+				_, err = io.CopyN(writer, reader, int64(numBytes))
+				if err != nil {
+					fmt.Println(err.Error())
+					break
+				}
+				if numBytes < int(chunkSize) {
+					break
+				}
 			}
 
-			file2, err := os.Open("copy_" + file_name)
+			file2, err := os.Open("copy_" + fileName)
 			if err != nil {
 				fmt.Println(err.Error())
 			}
-			check_sum2 := messages.GetCheckSum(*file2)
+			checkSum2 := messages.GetCheckSum(*file2)
 
-			ack := &messages.Ack{CheckSumMatched: strings.Compare(check_sum, check_sum2) != 0}
+			ack := &messages.Ack{CheckSumMatched: strings.Compare(checkSum, checkSum2) == 0}
 			err2 := SendAck(ack, conn)
 			fmt.Println("Ack status: " + strconv.FormatBool(ack.CheckSumMatched))
 			if err2 != nil {
