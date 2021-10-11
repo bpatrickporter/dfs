@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
-	"file_transfer/messages"
+	"dfs/messages"
 	"fmt"
 	"google.golang.org/protobuf/proto"
 	"io"
@@ -14,7 +14,7 @@ import (
 	"strconv"
 )
 
-func HandleArgs(args []string) (string, int, error){
+func HandleArgs(args []string) (string, int, error) {
 	chunkSize, err := strconv.Atoi(args[4])
 	return args[3], chunkSize, err
 }
@@ -55,6 +55,16 @@ func ReceiveAck(conn net.Conn) {
 	}
 }
 
+func InitialLogger() {
+	file, err := os.OpenFile("logs/client_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.SetOutput(file)
+	log.Println("Client start up complete")
+
+}
+
 func main() {
 
 	file, chunkSize, err := HandleArgs(os.Args)
@@ -62,7 +72,7 @@ func main() {
 		log.Fatalln(err.Error())
 		return
 	}
-
+	InitialLogger()
 	conn, err := net.Dial("tcp", os.Args[1] + ":" + os.Args[2])
 	if err != nil {
 		log.Fatalln(err.Error())
