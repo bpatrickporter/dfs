@@ -3,8 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"dfs/messages"
+	"encoding/binary"
 	"fmt"
 	"google.golang.org/protobuf/proto"
 	"io"
@@ -14,23 +14,12 @@ import (
 	"strconv"
 )
 
-func HandleArgs(args []string) (string, int, error) {
-	chunkSize, err := strconv.Atoi(args[4])
-	return args[3], chunkSize, err
-}
-
-func SendMetadata(metadata *messages.Metadata, conn net.Conn) error {
-	serialized, err := proto.Marshal(metadata)
-	if err != nil {
-		return err
-	}
-
-	prefix := make([]byte, 8)
-	binary.LittleEndian.PutUint64(prefix, uint64(len(serialized)))
-	conn.Write(prefix)
-	conn.Write(serialized)
-
-	return nil
+func HandleArgs() (string, string, string, int, error) {
+	host := os.Args[1]
+	port := os.Args[2]
+	file := os.Args[3]
+	chunkSize, err := strconv.Atoi(os.Args[4])
+	return host, port, file, chunkSize, err
 }
 
 func ReceiveAck(conn net.Conn) {
@@ -62,46 +51,48 @@ func InitialLogger() {
 	}
 	log.SetOutput(file)
 	log.Println("Client start up complete")
+}
 
+func GetFileMetadata(fileName string) (int, int32, string) {
+	f, _ := os.Open(fileName)
+	defer f.Close()
+	fileInfo, _ := f.Stat()
+	fileSize := fileInfo.Size()
+	numChunks := int32(fileSize)/int32(64)
+	checkSum := messages.GetCheckSum(*f)
+	return int(fileSize), numChunks, checkSum
 }
 
 func main() {
 
-	file, chunkSize, err := HandleArgs(os.Args)
+	host, port, file, chunkSize, err := HandleArgs()
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
 	InitialLogger()
-	conn, err := net.Dial("tcp", os.Args[1] + ":" + os.Args[2])
+	conn, err := net.Dial("tcp", host + ":" + port)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
 	defer conn.Close()
+	msgHandler := messages.NewMessageHandler(conn)
+	_, chunks, checkSum := GetFileMetadata(file)
+	metadata := &messages.Metadata{FileName: file, NumChunks: chunks, ChunkSize: int32(chunkSize), CheckSum: checkSum}
+	msg := messages.PutRequest{Metadata: metadata}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
+	}
+	msgHandler.Send(wrapper)
 
 	f, _ := os.Open(file)
-	defer f.Close()
-
-	fileInfo, _ := f.Stat()
-	fileSize := fileInfo.Size()
-	numChunks := int32(fileSize)/int32(chunkSize)
-	checkSum := messages.GetCheckSum(*f)
-
-	var metadata *messages.Metadata
-	metadata = &messages.Metadata{FileName: file, NumChunks: numChunks, ChunkSize: int32(chunkSize), CheckSum: checkSum}
-	SendMetadata(metadata, conn)
-
-	f, _ = os.Open(file)
-
 	buffer := make([]byte, chunkSize)
 	reader := bytes.NewReader(buffer)
 	writer := bufio.NewWriter(conn)
-
 	for {
 		numBytes, err := f.Read(buffer)
 		reader = bytes.NewReader(buffer)
-
 		if err != nil {
 			break
 		}

@@ -139,6 +139,576 @@ func (x *Ack) GetCheckSumMatched() bool {
 	return false
 }
 
+type PutRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Metadata *Metadata `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
+}
+
+func (x *PutRequest) Reset() {
+	*x = PutRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_dfs_proto_msgTypes[2]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *PutRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PutRequest) ProtoMessage() {}
+
+func (x *PutRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[2]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PutRequest.ProtoReflect.Descriptor instead.
+func (*PutRequest) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *PutRequest) GetMetadata() *Metadata {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+type PutResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Available bool     `protobuf:"varint,1,opt,name=available,proto3" json:"available,omitempty"`
+	Nodes     []string `protobuf:"bytes,2,rep,name=nodes,proto3" json:"nodes,omitempty"`
+}
+
+func (x *PutResponse) Reset() {
+	*x = PutResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_dfs_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *PutResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PutResponse) ProtoMessage() {}
+
+func (x *PutResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PutResponse.ProtoReflect.Descriptor instead.
+func (*PutResponse) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PutResponse) GetAvailable() bool {
+	if x != nil {
+		return x.Available
+	}
+	return false
+}
+
+func (x *PutResponse) GetNodes() []string {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
+type GetRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	FileName string `protobuf:"bytes,1,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
+}
+
+func (x *GetRequest) Reset() {
+	*x = GetRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_dfs_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *GetRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRequest) ProtoMessage() {}
+
+func (x *GetRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRequest.ProtoReflect.Descriptor instead.
+func (*GetRequest) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetRequest) GetFileName() string {
+	if x != nil {
+		return x.FileName
+	}
+	return ""
+}
+
+type GetResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Exists bool     `protobuf:"varint,1,opt,name=exists,proto3" json:"exists,omitempty"`
+	Nodes  []string `protobuf:"bytes,2,rep,name=nodes,proto3" json:"nodes,omitempty"`
+}
+
+func (x *GetResponse) Reset() {
+	*x = GetResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_dfs_proto_msgTypes[5]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *GetResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetResponse) ProtoMessage() {}
+
+func (x *GetResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[5]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetResponse.ProtoReflect.Descriptor instead.
+func (*GetResponse) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetResponse) GetExists() bool {
+	if x != nil {
+		return x.Exists
+	}
+	return false
+}
+
+func (x *GetResponse) GetNodes() []string {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
+type DeleteRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	FileName string `protobuf:"bytes,1,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
+}
+
+func (x *DeleteRequest) Reset() {
+	*x = DeleteRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_dfs_proto_msgTypes[6]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *DeleteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteRequest) ProtoMessage() {}
+
+func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[6]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
+func (*DeleteRequest) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *DeleteRequest) GetFileName() string {
+	if x != nil {
+		return x.FileName
+	}
+	return ""
+}
+
+type DeleteResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Successful bool `protobuf:"varint,1,opt,name=successful,proto3" json:"successful,omitempty"`
+}
+
+func (x *DeleteResponse) Reset() {
+	*x = DeleteResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_dfs_proto_msgTypes[7]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *DeleteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteResponse) ProtoMessage() {}
+
+func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[7]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
+func (*DeleteResponse) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *DeleteResponse) GetSuccessful() bool {
+	if x != nil {
+		return x.Successful
+	}
+	return false
+}
+
+type Registration struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Node string `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
+}
+
+func (x *Registration) Reset() {
+	*x = Registration{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_dfs_proto_msgTypes[8]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *Registration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Registration) ProtoMessage() {}
+
+func (x *Registration) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[8]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Registration.ProtoReflect.Descriptor instead.
+func (*Registration) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *Registration) GetNode() string {
+	if x != nil {
+		return x.Node
+	}
+	return ""
+}
+
+type Heartbeat struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Node string `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
+}
+
+func (x *Heartbeat) Reset() {
+	*x = Heartbeat{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_dfs_proto_msgTypes[9]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *Heartbeat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Heartbeat) ProtoMessage() {}
+
+func (x *Heartbeat) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[9]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
+func (*Heartbeat) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *Heartbeat) GetNode() string {
+	if x != nil {
+		return x.Node
+	}
+	return ""
+}
+
+type Wrapper struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Types that are assignable to Msg:
+	//	*Wrapper_AcknowledgeMessage
+	//	*Wrapper_PutRequestMessage
+	//	*Wrapper_PutResponseMessage
+	//	*Wrapper_GetRequestMessage
+	//	*Wrapper_GetResponseMessage
+	//	*Wrapper_DeleteRequestMessage
+	//	*Wrapper_DeleteResponseMessage
+	//	*Wrapper_RegistrationMessage
+	//	*Wrapper_HeartbeatMessage
+	Msg isWrapper_Msg `protobuf_oneof:"msg"`
+}
+
+func (x *Wrapper) Reset() {
+	*x = Wrapper{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_dfs_proto_msgTypes[10]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *Wrapper) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Wrapper) ProtoMessage() {}
+
+func (x *Wrapper) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[10]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Wrapper.ProtoReflect.Descriptor instead.
+func (*Wrapper) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{10}
+}
+
+func (m *Wrapper) GetMsg() isWrapper_Msg {
+	if m != nil {
+		return m.Msg
+	}
+	return nil
+}
+
+func (x *Wrapper) GetAcknowledgeMessage() *Ack {
+	if x, ok := x.GetMsg().(*Wrapper_AcknowledgeMessage); ok {
+		return x.AcknowledgeMessage
+	}
+	return nil
+}
+
+func (x *Wrapper) GetPutRequestMessage() *PutRequest {
+	if x, ok := x.GetMsg().(*Wrapper_PutRequestMessage); ok {
+		return x.PutRequestMessage
+	}
+	return nil
+}
+
+func (x *Wrapper) GetPutResponseMessage() *PutResponse {
+	if x, ok := x.GetMsg().(*Wrapper_PutResponseMessage); ok {
+		return x.PutResponseMessage
+	}
+	return nil
+}
+
+func (x *Wrapper) GetGetRequestMessage() *GetRequest {
+	if x, ok := x.GetMsg().(*Wrapper_GetRequestMessage); ok {
+		return x.GetRequestMessage
+	}
+	return nil
+}
+
+func (x *Wrapper) GetGetResponseMessage() *GetResponse {
+	if x, ok := x.GetMsg().(*Wrapper_GetResponseMessage); ok {
+		return x.GetResponseMessage
+	}
+	return nil
+}
+
+func (x *Wrapper) GetDeleteRequestMessage() *DeleteRequest {
+	if x, ok := x.GetMsg().(*Wrapper_DeleteRequestMessage); ok {
+		return x.DeleteRequestMessage
+	}
+	return nil
+}
+
+func (x *Wrapper) GetDeleteResponseMessage() *DeleteResponse {
+	if x, ok := x.GetMsg().(*Wrapper_DeleteResponseMessage); ok {
+		return x.DeleteResponseMessage
+	}
+	return nil
+}
+
+func (x *Wrapper) GetRegistrationMessage() *Registration {
+	if x, ok := x.GetMsg().(*Wrapper_RegistrationMessage); ok {
+		return x.RegistrationMessage
+	}
+	return nil
+}
+
+func (x *Wrapper) GetHeartbeatMessage() *Heartbeat {
+	if x, ok := x.GetMsg().(*Wrapper_HeartbeatMessage); ok {
+		return x.HeartbeatMessage
+	}
+	return nil
+}
+
+type isWrapper_Msg interface {
+	isWrapper_Msg()
+}
+
+type Wrapper_AcknowledgeMessage struct {
+	AcknowledgeMessage *Ack `protobuf:"bytes,1,opt,name=acknowledge_message,json=acknowledgeMessage,proto3,oneof"`
+}
+
+type Wrapper_PutRequestMessage struct {
+	PutRequestMessage *PutRequest `protobuf:"bytes,2,opt,name=put_request_message,json=putRequestMessage,proto3,oneof"`
+}
+
+type Wrapper_PutResponseMessage struct {
+	PutResponseMessage *PutResponse `protobuf:"bytes,3,opt,name=put_response_message,json=putResponseMessage,proto3,oneof"`
+}
+
+type Wrapper_GetRequestMessage struct {
+	GetRequestMessage *GetRequest `protobuf:"bytes,4,opt,name=get_request_message,json=getRequestMessage,proto3,oneof"`
+}
+
+type Wrapper_GetResponseMessage struct {
+	GetResponseMessage *GetResponse `protobuf:"bytes,5,opt,name=get_response_message,json=getResponseMessage,proto3,oneof"`
+}
+
+type Wrapper_DeleteRequestMessage struct {
+	DeleteRequestMessage *DeleteRequest `protobuf:"bytes,6,opt,name=delete_request_message,json=deleteRequestMessage,proto3,oneof"`
+}
+
+type Wrapper_DeleteResponseMessage struct {
+	DeleteResponseMessage *DeleteResponse `protobuf:"bytes,7,opt,name=delete_response_message,json=deleteResponseMessage,proto3,oneof"`
+}
+
+type Wrapper_RegistrationMessage struct {
+	RegistrationMessage *Registration `protobuf:"bytes,8,opt,name=registration_message,json=registrationMessage,proto3,oneof"`
+}
+
+type Wrapper_HeartbeatMessage struct {
+	HeartbeatMessage *Heartbeat `protobuf:"bytes,9,opt,name=heartbeat_message,json=heartbeatMessage,proto3,oneof"`
+}
+
+func (*Wrapper_AcknowledgeMessage) isWrapper_Msg() {}
+
+func (*Wrapper_PutRequestMessage) isWrapper_Msg() {}
+
+func (*Wrapper_PutResponseMessage) isWrapper_Msg() {}
+
+func (*Wrapper_GetRequestMessage) isWrapper_Msg() {}
+
+func (*Wrapper_GetResponseMessage) isWrapper_Msg() {}
+
+func (*Wrapper_DeleteRequestMessage) isWrapper_Msg() {}
+
+func (*Wrapper_DeleteResponseMessage) isWrapper_Msg() {}
+
+func (*Wrapper_RegistrationMessage) isWrapper_Msg() {}
+
+func (*Wrapper_HeartbeatMessage) isWrapper_Msg() {}
+
 var File_dfs_proto protoreflect.FileDescriptor
 
 var file_dfs_proto_rawDesc = []byte{
@@ -154,8 +724,70 @@ var file_dfs_proto_rawDesc = []byte{
 	0x22, 0x31, 0x0a, 0x03, 0x41, 0x63, 0x6b, 0x12, 0x2a, 0x0a, 0x11, 0x63, 0x68, 0x65, 0x63, 0x6b,
 	0x5f, 0x73, 0x75, 0x6d, 0x5f, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x65, 0x64, 0x18, 0x01, 0x20, 0x01,
 	0x28, 0x08, 0x52, 0x0f, 0x63, 0x68, 0x65, 0x63, 0x6b, 0x53, 0x75, 0x6d, 0x4d, 0x61, 0x74, 0x63,
-	0x68, 0x65, 0x64, 0x42, 0x0c, 0x5a, 0x0a, 0x2e, 0x2f, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65,
-	0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x68, 0x65, 0x64, 0x22, 0x33, 0x0a, 0x0a, 0x50, 0x75, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x12, 0x25, 0x0a, 0x08, 0x6d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x0b, 0x32, 0x09, 0x2e, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x52, 0x08,
+	0x6d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x22, 0x41, 0x0a, 0x0b, 0x50, 0x75, 0x74, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x1c, 0x0a, 0x09, 0x61, 0x76, 0x61, 0x69, 0x6c,
+	0x61, 0x62, 0x6c, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x61, 0x76, 0x61, 0x69,
+	0x6c, 0x61, 0x62, 0x6c, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x6e, 0x6f, 0x64, 0x65, 0x73, 0x18, 0x02,
+	0x20, 0x03, 0x28, 0x09, 0x52, 0x05, 0x6e, 0x6f, 0x64, 0x65, 0x73, 0x22, 0x29, 0x0a, 0x0a, 0x47,
+	0x65, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x1b, 0x0a, 0x09, 0x66, 0x69, 0x6c,
+	0x65, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x66, 0x69,
+	0x6c, 0x65, 0x4e, 0x61, 0x6d, 0x65, 0x22, 0x3b, 0x0a, 0x0b, 0x47, 0x65, 0x74, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x16, 0x0a, 0x06, 0x65, 0x78, 0x69, 0x73, 0x74, 0x73, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x06, 0x65, 0x78, 0x69, 0x73, 0x74, 0x73, 0x12, 0x14, 0x0a,
+	0x05, 0x6e, 0x6f, 0x64, 0x65, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x09, 0x52, 0x05, 0x6e, 0x6f,
+	0x64, 0x65, 0x73, 0x22, 0x2c, 0x0a, 0x0d, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x12, 0x1b, 0x0a, 0x09, 0x66, 0x69, 0x6c, 0x65, 0x5f, 0x6e, 0x61, 0x6d,
+	0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x66, 0x69, 0x6c, 0x65, 0x4e, 0x61, 0x6d,
+	0x65, 0x22, 0x30, 0x0a, 0x0e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x12, 0x1e, 0x0a, 0x0a, 0x73, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x66, 0x75,
+	0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0a, 0x73, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73,
+	0x66, 0x75, 0x6c, 0x22, 0x22, 0x0a, 0x0c, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x6f, 0x64, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x04, 0x6e, 0x6f, 0x64, 0x65, 0x22, 0x1f, 0x0a, 0x09, 0x48, 0x65, 0x61, 0x72, 0x74,
+	0x62, 0x65, 0x61, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x6f, 0x64, 0x65, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x04, 0x6e, 0x6f, 0x64, 0x65, 0x22, 0xdd, 0x04, 0x0a, 0x07, 0x57, 0x72, 0x61,
+	0x70, 0x70, 0x65, 0x72, 0x12, 0x37, 0x0a, 0x13, 0x61, 0x63, 0x6b, 0x6e, 0x6f, 0x77, 0x6c, 0x65,
+	0x64, 0x67, 0x65, 0x5f, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x04, 0x2e, 0x41, 0x63, 0x6b, 0x48, 0x00, 0x52, 0x12, 0x61, 0x63, 0x6b, 0x6e, 0x6f,
+	0x77, 0x6c, 0x65, 0x64, 0x67, 0x65, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x3d, 0x0a,
+	0x13, 0x70, 0x75, 0x74, 0x5f, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x5f, 0x6d, 0x65, 0x73,
+	0x73, 0x61, 0x67, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0b, 0x2e, 0x50, 0x75, 0x74,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x48, 0x00, 0x52, 0x11, 0x70, 0x75, 0x74, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x40, 0x0a, 0x14,
+	0x70, 0x75, 0x74, 0x5f, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x5f, 0x6d, 0x65, 0x73,
+	0x73, 0x61, 0x67, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0c, 0x2e, 0x50, 0x75, 0x74,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x48, 0x00, 0x52, 0x12, 0x70, 0x75, 0x74, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x3d,
+	0x0a, 0x13, 0x67, 0x65, 0x74, 0x5f, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x5f, 0x6d, 0x65,
+	0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0b, 0x2e, 0x47, 0x65,
+	0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x48, 0x00, 0x52, 0x11, 0x67, 0x65, 0x74, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x40, 0x0a,
+	0x14, 0x67, 0x65, 0x74, 0x5f, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x5f, 0x6d, 0x65,
+	0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0c, 0x2e, 0x47, 0x65,
+	0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x48, 0x00, 0x52, 0x12, 0x67, 0x65, 0x74,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12,
+	0x46, 0x0a, 0x16, 0x64, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x5f, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x5f, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x0e, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x48,
+	0x00, 0x52, 0x14, 0x64, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
+	0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x49, 0x0a, 0x17, 0x64, 0x65, 0x6c, 0x65, 0x74,
+	0x65, 0x5f, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x5f, 0x6d, 0x65, 0x73, 0x73, 0x61,
+	0x67, 0x65, 0x18, 0x07, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0f, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74,
+	0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x48, 0x00, 0x52, 0x15, 0x64, 0x65, 0x6c,
+	0x65, 0x74, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x4d, 0x65, 0x73, 0x73, 0x61,
+	0x67, 0x65, 0x12, 0x42, 0x0a, 0x14, 0x72, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69,
+	0x6f, 0x6e, 0x5f, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x08, 0x20, 0x01, 0x28, 0x0b,
+	0x32, 0x0d, 0x2e, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x48,
+	0x00, 0x52, 0x13, 0x72, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d,
+	0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x39, 0x0a, 0x11, 0x68, 0x65, 0x61, 0x72, 0x74, 0x62,
+	0x65, 0x61, 0x74, 0x5f, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x09, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x0a, 0x2e, 0x48, 0x65, 0x61, 0x72, 0x74, 0x62, 0x65, 0x61, 0x74, 0x48, 0x00, 0x52,
+	0x10, 0x68, 0x65, 0x61, 0x72, 0x74, 0x62, 0x65, 0x61, 0x74, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67,
+	0x65, 0x42, 0x05, 0x0a, 0x03, 0x6d, 0x73, 0x67, 0x42, 0x0c, 0x5a, 0x0a, 0x2e, 0x2f, 0x6d, 0x65,
+	0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -170,17 +802,36 @@ func file_dfs_proto_rawDescGZIP() []byte {
 	return file_dfs_proto_rawDescData
 }
 
-var file_dfs_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_dfs_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_dfs_proto_goTypes = []interface{}{
-	(*Metadata)(nil), // 0: Metadata
-	(*Ack)(nil),      // 1: Ack
+	(*Metadata)(nil),       // 0: Metadata
+	(*Ack)(nil),            // 1: Ack
+	(*PutRequest)(nil),     // 2: PutRequest
+	(*PutResponse)(nil),    // 3: PutResponse
+	(*GetRequest)(nil),     // 4: GetRequest
+	(*GetResponse)(nil),    // 5: GetResponse
+	(*DeleteRequest)(nil),  // 6: DeleteRequest
+	(*DeleteResponse)(nil), // 7: DeleteResponse
+	(*Registration)(nil),   // 8: Registration
+	(*Heartbeat)(nil),      // 9: Heartbeat
+	(*Wrapper)(nil),        // 10: Wrapper
 }
 var file_dfs_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0,  // 0: PutRequest.metadata:type_name -> Metadata
+	1,  // 1: Wrapper.acknowledge_message:type_name -> Ack
+	2,  // 2: Wrapper.put_request_message:type_name -> PutRequest
+	3,  // 3: Wrapper.put_response_message:type_name -> PutResponse
+	4,  // 4: Wrapper.get_request_message:type_name -> GetRequest
+	5,  // 5: Wrapper.get_response_message:type_name -> GetResponse
+	6,  // 6: Wrapper.delete_request_message:type_name -> DeleteRequest
+	7,  // 7: Wrapper.delete_response_message:type_name -> DeleteResponse
+	8,  // 8: Wrapper.registration_message:type_name -> Registration
+	9,  // 9: Wrapper.heartbeat_message:type_name -> Heartbeat
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_dfs_proto_init() }
@@ -213,6 +864,125 @@ func file_dfs_proto_init() {
 				return nil
 			}
 		}
+		file_dfs_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*PutRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_dfs_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*PutResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_dfs_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_dfs_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_dfs_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*DeleteRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_dfs_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*DeleteResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_dfs_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Registration); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_dfs_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Heartbeat); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_dfs_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Wrapper); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+	}
+	file_dfs_proto_msgTypes[10].OneofWrappers = []interface{}{
+		(*Wrapper_AcknowledgeMessage)(nil),
+		(*Wrapper_PutRequestMessage)(nil),
+		(*Wrapper_PutResponseMessage)(nil),
+		(*Wrapper_GetRequestMessage)(nil),
+		(*Wrapper_GetResponseMessage)(nil),
+		(*Wrapper_DeleteRequestMessage)(nil),
+		(*Wrapper_DeleteResponseMessage)(nil),
+		(*Wrapper_RegistrationMessage)(nil),
+		(*Wrapper_HeartbeatMessage)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -220,7 +990,7 @@ func file_dfs_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_dfs_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

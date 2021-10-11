@@ -15,19 +15,6 @@ import (
 	"strings"
 )
 
-func ReceiveMetadata(conn net.Conn) (*messages.Metadata, error) {
-	prefix := make([]byte, 8)
-	conn.Read(prefix)
-
-	payloadSize := binary.LittleEndian.Uint64(prefix)
-	payload := make([]byte, payloadSize)
-	conn.Read(payload)
-
-	metadata := &messages.Metadata{}
-	err := proto.Unmarshal(payload, metadata)
-	return metadata, err
-}
-
 func SendAck(ack *messages.Ack, conn net.Conn) error {
 	serialized, err := proto.Marshal(ack)
 	if err != nil {
@@ -43,53 +30,65 @@ func SendAck(ack *messages.Ack, conn net.Conn) error {
 	return nil
 }
 
-func HandleRequests(listener net.Listener, rootDirectory string) {
-	if conn, err := listener.Accept(); err == nil {
+func HandleRequest(conn net.Conn, rootDirectory string) {
+		messageHandler := messages.NewMessageHandler(conn)
+		defer messageHandler.Close()
 
-		metadata, _ := ReceiveMetadata(conn)
-		fileName := metadata.FileName
-		//numChunks := metadata.NumChunks
-		chunkSize := metadata.ChunkSize
-		checkSum := metadata.CheckSum
+		wrapper, _ := messageHandler.Receive()
+		switch msg := wrapper.Msg.(type) {
+		case *messages.Wrapper_PutRequestMessage:
+			log.Println("Put request received")
+			metadata := msg.PutRequestMessage.GetMetadata()
+			fileName := metadata.GetFileName()
+			chunkSize := metadata.GetChunkSize()
+			checkSum := metadata.GetCheckSum()
 
-		file, err := os.Create(rootDirectory + fileName)
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-
-		buffer := make([]byte, chunkSize)
-		writer := bufio.NewWriter(file)
-
-		for {
-			numBytes, err := conn.Read(buffer)
+			file, err := os.Create(rootDirectory + fileName)
+			log.Println("File created")
 			if err != nil {
 				fmt.Println(err.Error())
-				break
 			}
-			reader := bytes.NewReader(buffer)
-			_, err = io.CopyN(writer, reader, int64(numBytes))
+
+			buffer := make([]byte, chunkSize)
+			writer := bufio.NewWriter(file)
+
+			log.Println("Preparing to write file")
+			for {
+				numBytes, err := conn.Read(buffer)
+				if err != nil {
+					fmt.Println(err.Error())
+					break
+				}
+				reader := bytes.NewReader(buffer)
+				_, err = io.CopyN(writer, reader, int64(numBytes))
+				if err != nil {
+					fmt.Println(err.Error())
+					break
+				}
+				if numBytes < int(chunkSize) {
+					break
+				}
+			}
+			log.Println("File write complete")
+			file2, err := os.Open(rootDirectory + fileName)
 			if err != nil {
 				fmt.Println(err.Error())
-				break
 			}
-			if numBytes < int(chunkSize) {
-				break
+			checkSum2 := messages.GetCheckSum(*file2)
+			checkSumResults := strings.Compare(checkSum, checkSum2) == 0
+			log.Println("Checksums match: " + strconv.FormatBool(checkSumResults))
+			ack := &messages.Ack{CheckSumMatched: checkSumResults}
+			err2 := SendAck(ack, conn)
+			fmt.Println("Ack status: " + strconv.FormatBool(ack.CheckSumMatched))
+			log.Println("Acknowledgment sent to client")
+			if err2 != nil {
+				return
 			}
+		case nil:
+			log.Println("Received an empty message, terminating client")
+		default:
+			log.Println("Unexpected message type: %T", msg)
 		}
-
-		file2, err := os.Open(rootDirectory + fileName)
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		checkSum2 := messages.GetCheckSum(*file2)
-
-		ack := &messages.Ack{CheckSumMatched: strings.Compare(checkSum, checkSum2) == 0}
-		err2 := SendAck(ack, conn)
-		fmt.Println("Ack status: " + strconv.FormatBool(ack.CheckSumMatched))
-		if err2 != nil {
-			return
-		}
-	}
 }
 
 func InitialLogger() {
@@ -101,16 +100,24 @@ func InitialLogger() {
 	log.Println("Node start up complete")
 }
 
+func HandleArgs() (string, string) {
+	port := os.Args[1]
+	dir := os.Args[2]
+	return port, dir
+}
+
 func main() {
 
-	rootDirectory := os.Args[2]
+	port, rootDir := HandleArgs()
 	InitialLogger()
-	listener, err := net.Listen("tcp", ":" + os.Args[1])
+	listener, err := net.Listen("tcp", ":" + port)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
 	for {
-		HandleRequests(listener, rootDirectory)
+		if conn, err := listener.Accept(); err == nil {
+			go HandleRequest(conn, rootDir)
+		}
 	}
 }
