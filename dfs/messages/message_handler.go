@@ -45,6 +45,10 @@ func (m *MessageHandler) Receive() (*Wrapper, error) {
 	return wrapper, err
 }
 
+func (m *MessageHandler) GetConn() net.Conn {
+	return m.conn
+}
+
 func (m *MessageHandler) Close() {
 	m.conn.Close()
 }

@@ -3,10 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"dfs/messages"
 	"fmt"
-	"google.golang.org/protobuf/proto"
 	"io"
 	"log"
 	"net"
@@ -15,27 +13,11 @@ import (
 	"strings"
 )
 
-func SendAck(ack *messages.Ack, conn net.Conn) error {
-	serialized, err := proto.Marshal(ack)
-	if err != nil {
-		return err
-	}
-
-	prefix := make([]byte, 8)
-	binary.LittleEndian.PutUint64(prefix, uint64(len(serialized)))
-	conn.Write(prefix)
-	conn.Write(serialized)
-
-	fmt.Println("Ack Sent")
-	return nil
-}
-
-func HandleRequest(conn net.Conn, rootDirectory string) {
-		messageHandler := messages.NewMessageHandler(conn)
-		defer messageHandler.Close()
-
-		wrapper, _ := messageHandler.Receive()
-		switch msg := wrapper.Msg.(type) {
+func HandleRequests(conn net.Conn, rootDirectory string) {
+	messageHandler := messages.NewMessageHandler(conn)
+	for {
+		request, _ := messageHandler.Receive()
+		switch msg := request.Msg.(type) {
 		case *messages.Wrapper_PutRequestMessage:
 			log.Println("Put request received")
 			metadata := msg.PutRequestMessage.GetMetadata()
@@ -78,20 +60,26 @@ func HandleRequest(conn net.Conn, rootDirectory string) {
 			checkSumResults := strings.Compare(checkSum, checkSum2) == 0
 			log.Println("Checksums match: " + strconv.FormatBool(checkSumResults))
 			ack := &messages.Ack{CheckSumMatched: checkSumResults}
-			err2 := SendAck(ack, conn)
+			response := &messages.Wrapper{
+				Msg: &messages.Wrapper_AcknowledgeMessage{AcknowledgeMessage: ack},
+			}
+			err = messageHandler.Send(response)
 			fmt.Println("Ack status: " + strconv.FormatBool(ack.CheckSumMatched))
 			log.Println("Acknowledgment sent to client")
-			if err2 != nil {
+			if err != nil {
 				return
 			}
 		case nil:
 			log.Println("Received an empty message, terminating client")
+			messageHandler.Close()
+			return
 		default:
-			log.Println("Unexpected message type: %T", msg)
+			continue
 		}
+	}
 }
 
-func InitialLogger() {
+func InitializeLogger() {
 	file, err := os.OpenFile("logs/node_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
@@ -109,7 +97,7 @@ func HandleArgs() (string, string) {
 func main() {
 
 	port, rootDir := HandleArgs()
-	InitialLogger()
+	InitializeLogger()
 	listener, err := net.Listen("tcp", ":" + port)
 	if err != nil {
 		log.Fatalln(err.Error())
@@ -117,7 +105,8 @@ func main() {
 	}
 	for {
 		if conn, err := listener.Accept(); err == nil {
-			go HandleRequest(conn, rootDir)
+			log.Println("Accepted a request.")
+			HandleRequests(conn, rootDir)
 		}
 	}
 }
