@@ -14,12 +14,12 @@ import (
 )
 
 func HandleArgs() (string, string) {
-	host := os.Args[1]
+	controller := os.Args[1]
 	port := os.Args[2]
 	//file := os.Args[3]
 	//chunkSize, err := strconv.Atoi(os.Args[4])
 	//return host, port, file, chunkSize, err
-	return host, port
+	return controller, port
 }
 
 func InitializeLogger() {
@@ -31,7 +31,7 @@ func InitializeLogger() {
 	log.Println("Client start up complete")
 }
 
-func GetFileMetadata(fileName string) (int, int32, string) {
+func GetMetadata(fileName string) (int, int32, string) {
 	f, _ := os.Open(fileName)
 	defer f.Close()
 	fileInfo, _ := f.Stat()
@@ -59,7 +59,7 @@ func GetInput(messageHandler *messages.MessageHandler) {
 				var words = strings.Split(trimmed, " ")
 				var file = words[1]
 				chunkSize := 3
-				_, chunks, checkSum := GetFileMetadata(file)
+				_, chunks, checkSum := GetMetadata(file)
 				metadata := &messages.Metadata{FileName: file, NumChunks: chunks, ChunkSize: int32(chunkSize), CheckSum: checkSum}
 				msg := messages.PutRequest{Metadata: metadata}
 				wrapper = &messages.Wrapper{
@@ -105,17 +105,16 @@ func GetInput(messageHandler *messages.MessageHandler) {
 		}
 	}
 
-
 func main() {
-	host, port := HandleArgs()
+	controller, port := HandleArgs()
 	InitializeLogger()
-	conn, err := net.Dial("tcp", host + ":" + port)
+	conn, err := net.Dial("tcp", controller + ":" + port)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
 	defer conn.Close()
-	fmt.Println("Connected to controller at " + host + ":" + port)
+	fmt.Println("Connected to controller at " + controller + ":" + port)
 	messageHandler := messages.NewMessageHandler(conn)
 	go GetInput(messageHandler)
 	for {

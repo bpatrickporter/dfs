@@ -13,7 +13,47 @@ import (
 	"strings"
 )
 
-func HandleRequests(conn net.Conn, rootDirectory string) {
+func HandleArgs() (string, string, string, string) {
+	listeningPort := os.Args[1]
+	rootDir := os.Args[2]
+	controllerHost := os.Args[3]
+	controllerPort := os.Args[4]
+	return listeningPort, rootDir, controllerHost, controllerPort
+}
+
+func InitializeLogger() {
+	file, err := os.OpenFile("logs/node_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.SetOutput(file)
+	log.Println("Node start up complete")
+}
+
+func RegisterWithController(name string, port string) error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalln()
+	}
+	conn, err := net.Dial("tcp", name + ":" + port)
+	if err != nil {
+		log.Fatalln(err.Error())
+		return err
+	}
+	defer conn.Close()
+	log.Println("Connected to controller: " + hostname + ":" + port)
+	registration := &messages.Registration{Node: hostname}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_RegistrationMessage{RegistrationMessage: registration},
+	}
+	messageHandler := messages.NewMessageHandler(conn)
+	messageHandler.Send(wrapper)
+	log.Println("Node registered with controller")
+	messageHandler.Close()
+	return err
+}
+
+func HandleConnection(conn net.Conn, rootDirectory string) {
 	messageHandler := messages.NewMessageHandler(conn)
 	for {
 		request, _ := messageHandler.Receive()
@@ -79,34 +119,24 @@ func HandleRequests(conn net.Conn, rootDirectory string) {
 	}
 }
 
-func InitializeLogger() {
-	file, err := os.OpenFile("logs/node_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.SetOutput(file)
-	log.Println("Node start up complete")
-}
-
-func HandleArgs() (string, string) {
-	port := os.Args[1]
-	dir := os.Args[2]
-	return port, dir
-}
-
 func main() {
 
-	port, rootDir := HandleArgs()
+	listeningPort, rootDir, controllerName, controllerPort := HandleArgs()
 	InitializeLogger()
-	listener, err := net.Listen("tcp", ":" + port)
+	err  := RegisterWithController(controllerName, controllerPort)
+	if err != nil {
+		log.Fatalln(err.Error())
+		return
+	}
+	listener, err := net.Listen("tcp", ":" + listeningPort)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
 	for {
 		if conn, err := listener.Accept(); err == nil {
-			log.Println("Accepted a request.")
-			HandleRequests(conn, rootDir)
+			log.Println("Accepted a connection.")
+			go HandleConnection(conn, rootDir)
 		}
 	}
 }
