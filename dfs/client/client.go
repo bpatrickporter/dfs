@@ -131,15 +131,18 @@ func main() {
 			log.Println("Received put response status: " + strconv.FormatBool(available))
 			if available {
 				log.Println("Preparing to send chunks")
-				log.Println("Destination list length: " + strconv.Itoa(len(destinationNodes)) + " nodes")
 				log.Println("Sending chunks to the following destinations: ")
 				for node := range destinationNodes {
 					log.Println(destinationNodes[node])
 				}
 			} else {
-				log.Println("File with this name already exists, must delete first")
+				fmt.Println("File with this name already exists, must delete first")
+				log.Println("File already exists")
 			}
-
+		case *messages.Wrapper_GetResponseMessage:
+			log.Println("Get Response message received")
+		case *messages.Wrapper_DeleteResponseMessage:
+			log.Println("Delete Response message received")
 		default:
 			continue
 		}
