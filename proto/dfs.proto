@@ -41,6 +41,7 @@ message DeleteResponse {
 
 message Registration {
     string node = 1;
+    string port = 2;
 }
 
 message Heartbeat {

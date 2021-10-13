@@ -30,19 +30,19 @@ func InitializeLogger() {
 	log.Println("Node start up complete")
 }
 
-func RegisterWithController(name string, port string) error {
+func RegisterWithController(controllerName string, controllerPort string, listeningPort string) error {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalln()
 	}
-	conn, err := net.Dial("tcp", name + ":" + port)
+	conn, err := net.Dial("tcp", controllerName + ":" + controllerPort)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return err
 	}
 	defer conn.Close()
-	log.Println("Connected to controller: " + hostname + ":" + port)
-	registration := &messages.Registration{Node: hostname}
+	log.Println("Connected to controller: " + controllerName + ":" + controllerPort)
+	registration := &messages.Registration{Node: hostname, Port: listeningPort}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_RegistrationMessage{RegistrationMessage: registration},
 	}
@@ -123,7 +123,7 @@ func main() {
 
 	listeningPort, rootDir, controllerName, controllerPort := HandleArgs()
 	InitializeLogger()
-	err  := RegisterWithController(controllerName, controllerPort)
+	err  := RegisterWithController(controllerName, controllerPort, listeningPort)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return

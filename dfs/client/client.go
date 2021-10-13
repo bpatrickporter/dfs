@@ -2,10 +2,8 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"dfs/messages"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -68,6 +66,7 @@ func GetInput(messageHandler *messages.MessageHandler) {
 				log.Println("Sending metadata.")
 				messageHandler.Send(wrapper)
 
+				/*
 				f, _ := os.Open(file)
 				log.Println("Opened file.")
 				buffer := make([]byte, chunkSize)
@@ -89,6 +88,8 @@ func GetInput(messageHandler *messages.MessageHandler) {
 					}
 				}
 				f.Close()
+
+				 */
 				log.Println("Done writing to connection.")
 			} else if strings.HasPrefix(message, "get") {
 				fmt.Println("get received")
@@ -121,11 +122,26 @@ func main() {
 		wrapper, _ := messageHandler.Receive()
 
 		switch msg := wrapper.Msg.(type) {
-			case *messages.Wrapper_AcknowledgeMessage:
-				status := msg.AcknowledgeMessage.GetCheckSumMatched()
-				fmt.Println("File transfer status: " + strconv.FormatBool(status))
-			default:
-				continue
+		case *messages.Wrapper_AcknowledgeMessage:
+			status := msg.AcknowledgeMessage.GetCheckSumMatched()
+			fmt.Println("File transfer status: " + strconv.FormatBool(status))
+		case *messages.Wrapper_PutResponseMessage:
+			available := msg.PutResponseMessage.GetAvailable()
+			destinationNodes := msg.PutResponseMessage.GetNodes()
+			log.Println("Received put response status: " + strconv.FormatBool(available))
+			if available {
+				log.Println("Preparing to send chunks")
+				log.Println("Destination list length: " + strconv.Itoa(len(destinationNodes)) + " nodes")
+				log.Println("Sending chunks to the following destinations: ")
+				for node := range destinationNodes {
+					log.Println(destinationNodes[node])
+				}
+			} else {
+				log.Println("File with this name already exists, must delete first")
+			}
+
+		default:
+			continue
 		}
 	}
 }
