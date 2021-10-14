@@ -29,44 +29,46 @@ func InitializeLogger() {
 	log.Println("Client start up complete")
 }
 
-func GetMetadata(fileName string) (int, int32, string) {
+func GetMetadata(fileName string) (int, string) {
 	f, _ := os.Open(fileName)
 	defer f.Close()
 	fileInfo, _ := f.Stat()
 	fileSize := fileInfo.Size()
-	numChunks := int32(fileSize)/int32(64)
 	checkSum := messages.GetCheckSum(*f)
-	return int(fileSize), numChunks, checkSum
+	return int(fileSize), checkSum
 }
 
-func GetInput(messageHandler *messages.MessageHandler) {
-	scanner := bufio.NewScanner(os.Stdin)
-	for {
-		result := scanner.Scan() // Reads up to a \n newline character
-		if result == false {
-			break
-		}
+func UnpackMetadata(metadata *messages.Metadata) (string, int, int, int, string){
+	return metadata.GetFileName(), int(metadata.GetFileSize()), int(metadata.GetNumChunks()), int(metadata.GetChunkSize()), metadata.GetCheckSum()
+}
 
-		message := scanner.Text()
-		if len(message) != 0 {
+func PackagePutRequest(fileName string) *messages.Wrapper {
+	fileSize, checkSum := GetMetadata(fileName)
+	metadata := &messages.Metadata{FileName: fileName, FileSize: int32(fileSize), CheckSum: checkSum}
+	msg := messages.PutRequest{Metadata: metadata}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
+	}
+	return wrapper
+}
 
-			var wrapper *messages.Wrapper
+func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
+	message := scanner.Text()
+	if len(message) != 0 {
 
-			if strings.HasPrefix(message, "put"){
-				var trimmed = strings.TrimPrefix(message, "/")
-				var words = strings.Split(trimmed, " ")
-				var file = words[1]
-				chunkSize := 3
-				_, chunks, checkSum := GetMetadata(file)
-				metadata := &messages.Metadata{FileName: file, NumChunks: chunks, ChunkSize: int32(chunkSize), CheckSum: checkSum}
-				msg := messages.PutRequest{Metadata: metadata}
-				wrapper = &messages.Wrapper{
-					Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
-				}
-				log.Println("Sending metadata.")
-				messageHandler.Send(wrapper)
+		var wrapper *messages.Wrapper
+		controllerMessageHandler := messages.NewMessageHandler(controllerConn)
 
-				/*
+		if strings.HasPrefix(message, "put"){
+			var trimmed = strings.TrimPrefix(message, "/")
+			var words = strings.Split(trimmed, " ")
+			var fileName = words[1]
+			wrapper = PackagePutRequest(fileName)
+			log.Println("Sending metadata.")
+			controllerMessageHandler.Send(wrapper)
+			go HandleConnection(controllerMessageHandler)
+
+			/*
 				f, _ := os.Open(file)
 				log.Println("Opened file.")
 				buffer := make([]byte, chunkSize)
@@ -89,35 +91,27 @@ func GetInput(messageHandler *messages.MessageHandler) {
 				}
 				f.Close()
 
-				 */
-				log.Println("Done writing to connection.")
-			} else if strings.HasPrefix(message, "get") {
-				fmt.Println("get received")
-			} else if strings.HasPrefix(message, "delete") {
-				fmt.Println("delete received")
-			} else if strings.HasPrefix(message, "ls") {
-				fmt.Println("ls received")
-			} else {
-				fmt.Println("error ")
-				}
-			}
-
-			//messageHandler.Send(wrapper)
+			*/
+			log.Println("Done writing to connection.")
+		} else if strings.HasPrefix(message, "get") {
+			fmt.Println("get received")
+			//send get request
+			//go handleConnection()
+		} else if strings.HasPrefix(message, "delete") {
+			fmt.Println("delete received")
+			//send dlete request
+			//go handleconnection
+		} else if strings.HasPrefix(message, "ls") {
+			fmt.Println("ls received")
+			//send ls request
+			//go handleconnection
+		} else {
+			fmt.Println("error ")
 		}
 	}
+}
 
-func main() {
-	controller, port := HandleArgs()
-	InitializeLogger()
-	conn, err := net.Dial("tcp", controller + ":" + port)
-	if err != nil {
-		log.Fatalln(err.Error())
-		return
-	}
-	defer conn.Close()
-	fmt.Println("Connected to controller at " + controller + ":" + port)
-	messageHandler := messages.NewMessageHandler(conn)
-	go GetInput(messageHandler)
+func HandleConnection(messageHandler *messages.MessageHandler) {
 	for {
 		wrapper, _ := messageHandler.Receive()
 
@@ -128,10 +122,16 @@ func main() {
 		case *messages.Wrapper_PutResponseMessage:
 			available := msg.PutResponseMessage.GetAvailable()
 			destinationNodes := msg.PutResponseMessage.GetNodes()
+			metadata := msg.PutResponseMessage.GetMetadata()
 			log.Println("Received put response status: " + strconv.FormatBool(available))
 			if available {
 				log.Println("Preparing to send chunks")
 				log.Println("Sending chunks to the following destinations: ")
+				fileName, fileSize, numChunks, chunkSize, checkSum := UnpackMetadata(metadata)
+				log.Printf("Metadata: \nName: %s \nSize: %d \nChunks: %d \nChunk Size: %d \n", fileName, fileSize, numChunks, chunkSize)
+				log.Printf("Checksum: %s \n", checkSum)
+				//send chunks out
+				//close connections
 				for node := range destinationNodes {
 					log.Println(destinationNodes[node])
 				}
@@ -139,12 +139,35 @@ func main() {
 				fmt.Println("File with this name already exists, must delete first")
 				log.Println("File already exists")
 			}
+			//return?
 		case *messages.Wrapper_GetResponseMessage:
 			log.Println("Get Response message received")
+			//go get chunks
+			//return
 		case *messages.Wrapper_DeleteResponseMessage:
 			log.Println("Delete Response message received")
+			//return
 		default:
 			continue
+		}
+	}
+}
+
+func main() {
+	controller, port := HandleArgs()
+	InitializeLogger()
+	controllerConn, err := net.Dial("tcp", controller + ":" + port)
+	if err != nil {
+		log.Fatalln(err.Error())
+		return
+	}
+	defer controllerConn.Close()
+	fmt.Println("Connected to controller at " + controller + ":" + port)
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		if result := scanner.Scan(); result != false {
+			HandleInput(scanner, controllerConn)
 		}
 	}
 }

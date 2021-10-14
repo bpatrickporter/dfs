@@ -16,9 +16,9 @@ import (
 func HandleArgs() (string, string, string, string) {
 	listeningPort := os.Args[1]
 	rootDir := os.Args[2]
-	controllerHost := os.Args[3]
+	controllerName := os.Args[3]
 	controllerPort := os.Args[4]
-	return listeningPort, rootDir, controllerHost, controllerPort
+	return listeningPort, rootDir, controllerName, controllerPort
 }
 
 func InitializeLogger() {
@@ -30,19 +30,19 @@ func InitializeLogger() {
 	log.Println("Node start up complete")
 }
 
-func RegisterWithController(controllerName string, controllerPort string, listeningPort string) error {
+func RegisterWithController(context context) error {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalln()
 	}
-	conn, err := net.Dial("tcp", controllerName + ":" + controllerPort)
+	conn, err := net.Dial("tcp", context.controllerName + ":" + context.controllerPort)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return err
 	}
 	defer conn.Close()
-	log.Println("Connected to controller: " + controllerName + ":" + controllerPort)
-	registration := &messages.Registration{Node: hostname, Port: listeningPort}
+	log.Println("Connected to controller: " + context.controllerName + ":" + context.controllerPort)
+	registration := &messages.Registration{Node: hostname, Port: context.listeningPort}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_RegistrationMessage{RegistrationMessage: registration},
 	}
@@ -53,7 +53,8 @@ func RegisterWithController(controllerName string, controllerPort string, listen
 	return err
 }
 
-func HandleConnection(conn net.Conn, rootDirectory string) {
+func HandleConnection(conn net.Conn, context context) {
+	log.Println("Accepted a connection from " + conn.RemoteAddr().String())
 	messageHandler := messages.NewMessageHandler(conn)
 	for {
 		request, _ := messageHandler.Receive()
@@ -65,7 +66,7 @@ func HandleConnection(conn net.Conn, rootDirectory string) {
 			chunkSize := metadata.GetChunkSize()
 			checkSum := metadata.GetCheckSum()
 
-			file, err := os.Create(rootDirectory + fileName)
+			file, err := os.Create(context.rootDir + fileName)
 			log.Println("File created")
 			if err != nil {
 				fmt.Println(err.Error())
@@ -92,7 +93,7 @@ func HandleConnection(conn net.Conn, rootDirectory string) {
 				}
 			}
 			log.Println("File write complete")
-			file2, err := os.Open(rootDirectory + fileName)
+			file2, err := os.Open(context.rootDir + fileName)
 			if err != nil {
 				fmt.Println(err.Error())
 			}
@@ -119,24 +120,34 @@ func HandleConnection(conn net.Conn, rootDirectory string) {
 	}
 }
 
-func main() {
-
+func InitializeContext() context {
 	listeningPort, rootDir, controllerName, controllerPort := HandleArgs()
+	return context{rootDir: rootDir, listeningPort: listeningPort, controllerName: controllerName, controllerPort: controllerPort}
+}
+
+type context struct {
+	rootDir string
+	listeningPort string
+	controllerName string
+	controllerPort string
+}
+
+func main() {
+	context := InitializeContext()
 	InitializeLogger()
-	err  := RegisterWithController(controllerName, controllerPort, listeningPort)
+	err  := RegisterWithController(context)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
-	listener, err := net.Listen("tcp", ":" + listeningPort)
+	listener, err := net.Listen("tcp", ":" + context.listeningPort)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
 	for {
 		if conn, err := listener.Accept(); err == nil {
-			log.Println("Accepted a connection.")
-			go HandleConnection(conn, rootDir)
+			go HandleConnection(conn, context)
 		}
 	}
 }

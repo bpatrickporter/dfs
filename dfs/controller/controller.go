@@ -18,10 +18,10 @@ func InitializeLogger() {
 	log.Println("Controller start up complete")
 }
 
-func UnpackMetadata(metadata *messages.Metadata) (string, int32, int32, string){
+func UnpackMetadata(metadata *messages.Metadata) (string, int32, string){
 	log.Println("Put request received")
 	log.Println("Unpacking file metadata")
-	return metadata.GetFileName(), metadata.GetNumChunks(), metadata.GetChunkSize(), metadata.GetCheckSum()
+	return metadata.GetFileName(), metadata.GetFileSize(), metadata.GetCheckSum()
 }
 
 func FileExists(fileName string, context *context) bool {
@@ -44,8 +44,9 @@ func GetDestinationNodes(context *context) []string {
 	return destinationNodes
 }
 
-func ValidatePutRequest(fileName string, context *context) (bool, []string) {
+func ValidatePutRequest(metadata *messages.Metadata, context *context) validationResult {
 	log.Println("Checking file index for file")
+	fileName := metadata.GetFileName()
 	exists := FileExists(fileName, context)
 	log.Println("Exists = " + strconv.FormatBool(exists))
 	var destinationNodes []string
@@ -62,11 +63,14 @@ func ValidatePutRequest(fileName string, context *context) (bool, []string) {
 	} else {
 		destinationNodes = make([]string, 0)
 	}
-	return exists, destinationNodes
+	return validationResult{fileExists: exists, destinationNodes: destinationNodes}
 }
 
-func PackagePutResponse(fileExists bool, destinationNodes *[]string) *messages.Wrapper {
-	putResponse := &messages.PutResponse{Available: !fileExists, Nodes: *destinationNodes}
+func PackagePutResponse(validationResult *validationResult, metadata *messages.Metadata, context *context) *messages.Wrapper {
+	//metadata := &messages.Metadata{FileName: fileName, FileSize: int32(fileSize), NumChunks: x, ChunkSize: y, CheckSum: checkSum}
+	metadata.ChunkSize = int32(context.chunkSize)
+	metadata.NumChunks = (metadata.FileSize + metadata.ChunkSize - 1) / metadata.ChunkSize
+	putResponse := &messages.PutResponse{Available: !validationResult.fileExists, Metadata: metadata, Nodes: validationResult.destinationNodes}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_PutResponseMessage{PutResponseMessage: putResponse},
 	}
@@ -91,20 +95,28 @@ func HandleConnection(conn net.Conn, context context) {
 	for {
 		request, _ := messageHandler.Receive()
 		switch msg := request.Msg.(type) {
-		case *messages.Wrapper_RegistrationMessage:
+		case *messages.Wrapper_RegistrationMessage: //from nodes
 			RegisterNode(msg, &context)
 			messageHandler.Close()
 			return
-		case *messages.Wrapper_PutRequestMessage:
-			fileName, _, _, _ := UnpackMetadata(msg.PutRequestMessage.GetMetadata())
-			fileExists, destinationNodes := ValidatePutRequest(fileName, &context)
-			wrapper := PackagePutResponse(fileExists, &destinationNodes)
+		case *messages.Wrapper_PutRequestMessage: //from client
+			metadata := msg.PutRequestMessage.GetMetadata()
+			//fileExists, destinationNodes := ValidatePutRequest(metadata, &context)
+			validationResult := ValidatePutRequest(metadata, &context)
+			wrapper := PackagePutResponse(&validationResult, metadata, &context)
+
+			//fileName := msg.PutRequestMessage.GetMetadata().GetFileName()
+			//fileExists, destinationNodes := ValidatePutRequest(fileName, &context)
+			//wrapper := PackagePutResponse(fileExists, &destinationNodes, context.chunkSize)
 			messageHandler.Send(wrapper)
-		case *messages.Wrapper_GetRequestMessage:
+		case *messages.Wrapper_GetRequestMessage: //from client
 			log.Println("Get request message received")
-		case *messages.Wrapper_DeleteRequestMessage:
+			//check if files exists
+			//find out where its at
+			//send list to client
+		case *messages.Wrapper_DeleteRequestMessage: //from client
 			log.Println("Delete request message received")
-		case *messages.Wrapper_HeartbeatMessage:
+		case *messages.Wrapper_HeartbeatMessage: //from nodes
 			log.Println("Heartbeat received")
 		case nil:
 			fmt.Println("Received an empty message, termination connection.")
@@ -116,18 +128,29 @@ func HandleConnection(conn net.Conn, context context) {
 	}
 }
 
-func InitializeContext() context {
-	return context{activeNodes: make(map[string]struct{}), fileIndex: make(map[string][]string), bloomFilter: make(map[string]int)}
+func InitializeContext() (context, error) {
+	chunkSize, err := strconv.Atoi(os.Args[2])
+	return context{activeNodes: make(map[string]struct{}), fileIndex: make(map[string][]string), bloomFilter: make(map[string]int), chunkSize: chunkSize}, err
 }
 
 type context struct {
 	activeNodes map[string]struct{}
 	fileIndex map[string][]string
 	bloomFilter map[string]int
+	chunkSize int
+}
+
+type validationResult struct {
+	fileExists bool
+	destinationNodes []string
 }
 
 func main() {
-	context := InitializeContext()
+	context, err := InitializeContext()
+	if err != nil {
+		log.Fatalln(err.Error())
+		return
+	}
 	InitializeLogger()
 	listener, err := net.Listen("tcp", ":" + os.Args[1])
 	if err != nil {
