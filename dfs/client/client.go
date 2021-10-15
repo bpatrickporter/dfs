@@ -111,6 +111,19 @@ func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
 	}
 }
 
+func GetChunkIndex(metadata *messages.Metadata, destinationNodes []string) map[string][]string {
+	chunkIndex := make(map[string][]string)
+	for i := 0; i < int(metadata.NumChunks); i++ {
+		moddedIndex := i % len(destinationNodes)
+		node := destinationNodes[moddedIndex]
+		chunkList := chunkIndex[node]
+		currentChunkName := strconv.Itoa(i) + "_" + metadata.FileName
+		chunkList = append(chunkList, currentChunkName)
+		chunkIndex[node] = chunkList
+	}
+	return chunkIndex
+}
+
 //func SendChunks(destinationNodes []string, metadata *messages.Metadata) error { }
 
 func HandleConnection(messageHandler *messages.MessageHandler) {
@@ -135,7 +148,13 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 				fileName, fileSize, numChunks, chunkSize, checkSum := UnpackMetadata(metadata)
 				log.Printf("Metadata: \nName: %s \nSize: %d \nChunks: %d \nChunk Size: %d \n", fileName, fileSize, numChunks, chunkSize)
 				log.Printf("Checksum: %s \n", checkSum)
-
+				chunkIndex := GetChunkIndex(metadata, destinationNodes)
+				for node, chunkList := range chunkIndex {
+					log.Println("-> " + node)
+					for chunkName := range chunkList {
+						log.Println("--> " + chunkList[chunkName])
+					}
+				}
 
 				//send chunks out
 				//close connections

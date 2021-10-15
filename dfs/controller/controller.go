@@ -52,7 +52,7 @@ func GetChunkIndex(metadata *messages.Metadata, context *context, chunkIndex map
 	}
 
 	numNodes := len(destinationNodes)
-	for i := 0; i < int(metadata.NumChunks) ; i++ {
+	for i := 0; i < int(metadata.NumChunks); i++ {
 		moddedIndex := i % numNodes
 		node := destinationNodes[moddedIndex]
 		chunkList := chunkIndex[node]
