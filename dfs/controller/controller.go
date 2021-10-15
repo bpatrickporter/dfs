@@ -25,7 +25,7 @@ func UnpackMetadata(metadata *messages.Metadata) (string, int32, string){
 }
 
 func FileExists(fileName string, context *context) bool {
-	_, exists := context.fileIndex[fileName]
+	_, exists := context.betterFileIndex[fileName]
 	if exists {
 		log.Println("Result: File exists")
 	} else {
@@ -34,7 +34,7 @@ func FileExists(fileName string, context *context) bool {
 	return exists
 }
 
-func GetDestinationNodes(metadata *messages.Metadata, context *context) []string {
+func GetChunkIndex(metadata *messages.Metadata, context *context, chunkIndex map[string][]string) []string {
 	metadata.ChunkSize = int32(context.chunkSize)
 	metadata.NumChunks = (metadata.FileSize + metadata.ChunkSize - 1) / metadata.ChunkSize
 	destinationNodes := make([]string, 0)
@@ -50,6 +50,16 @@ func GetDestinationNodes(metadata *messages.Metadata, context *context) []string
 		}
 		counter++
 	}
+
+	numNodes := len(destinationNodes)
+	for i := 0; i < int(metadata.NumChunks) ; i++ {
+		moddedIndex := i % numNodes
+		node := destinationNodes[moddedIndex]
+		chunkList := chunkIndex[node]
+		currentChunk := strconv.Itoa(i) + "_" + metadata.FileName
+		chunkList = append(chunkList, currentChunk)
+		chunkIndex[node] = chunkList
+	}
 	return destinationNodes
 }
 
@@ -58,28 +68,33 @@ func ValidatePutRequest(metadata *messages.Metadata, context *context) validatio
 	fileName := metadata.GetFileName()
 	exists := FileExists(fileName, context)
 	log.Println("Exists = " + strconv.FormatBool(exists))
-	var destinationNodes []string
+	chunkIndex := make(map[string][]string)
+	var nodeList []string
 	if !exists {
 		//add to bloom filter
-		d := GetDestinationNodes(metadata, context)
-		destinationNodes = append(destinationNodes, d...)
+		nodeList = GetChunkIndex(metadata, context, chunkIndex)
+		//destinationNodes = append(destinationNodes, d...)
 		log.Println("Adding destination nodes to file index")
-		context.fileIndex[fileName] = destinationNodes
+		context.betterFileIndex[fileName] = chunkIndex
 		log.Println("Added the following destination nodes for filename " + fileName)
-		for i := range destinationNodes {
-			log.Println("-> " + destinationNodes[i])
+		for node, chunkList := range chunkIndex {
+			log.Println("-> " + node)
+			for chunk := range chunkList {
+				log.Println("--> " + chunkList[chunk])
+			}
 		}
 	} else {
-		destinationNodes = make([]string, 0)
+		//chunkIndex = make(map[string][]string)
+		nodeList = make([]string, 0)
 	}
-	return validationResult{fileExists: exists, destinationNodes: destinationNodes}
+	return validationResult{fileExists: exists, nodeList: nodeList}
 }
 
 func PackagePutResponse(validationResult *validationResult, metadata *messages.Metadata, context *context) *messages.Wrapper {
 	//metadata := &messages.Metadata{FileName: fileName, FileSize: int32(fileSize), NumChunks: x, ChunkSize: y, CheckSum: checkSum}
 	//metadata.ChunkSize = int32(context.chunkSize)
 	//metadata.NumChunks = (metadata.FileSize + metadata.ChunkSize - 1) / metadata.ChunkSize
-	putResponse := &messages.PutResponse{Available: !validationResult.fileExists, Metadata: metadata, Nodes: validationResult.destinationNodes}
+	putResponse := &messages.PutResponse{Available: !validationResult.fileExists, Metadata: metadata, Nodes: validationResult.nodeList}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_PutResponseMessage{PutResponseMessage: putResponse},
 	}
@@ -139,19 +154,21 @@ func HandleConnection(conn net.Conn, context context) {
 
 func InitializeContext() (context, error) {
 	chunkSize, err := strconv.Atoi(os.Args[2])
-	return context{activeNodes: make(map[string]struct{}), fileIndex: make(map[string][]string), bloomFilter: make(map[string]int), chunkSize: chunkSize}, err
+	return context{activeNodes: make(map[string]struct{}), betterFileIndex: make(map[string]map[string][]string), bloomFilter: make(map[string]int), chunkSize: chunkSize}, err
 }
 
 type context struct {
 	activeNodes map[string]struct{}
-	fileIndex map[string][]string
+	//fileIndex map[string][]string
+	//map[fileName]map[node][]string <- chunkNames
+	betterFileIndex map[string]map[string][]string
 	bloomFilter map[string]int
 	chunkSize int
 }
 
 type validationResult struct {
 	fileExists bool
-	destinationNodes []string
+	nodeList []string
 }
 
 func main() {
