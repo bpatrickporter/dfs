@@ -34,12 +34,21 @@ func FileExists(fileName string, context *context) bool {
 	return exists
 }
 
-func GetDestinationNodes(context *context) []string {
-	//get list of nodes randomly--for now return all active nodes
+func GetDestinationNodes(metadata *messages.Metadata, context *context) []string {
+	metadata.ChunkSize = int32(context.chunkSize)
+	metadata.NumChunks = (metadata.FileSize + metadata.ChunkSize - 1) / metadata.ChunkSize
 	destinationNodes := make([]string, 0)
-	for node := range context.activeNodes {
+
+	counter := 1
+	log.Println("NumChunks: " + strconv.Itoa(int(metadata.NumChunks)))
+	log.Println("NumNodes: " + strconv.Itoa(len(context.activeNodes)))
+	for node, _ := range context.activeNodes {
 		log.Println("Adding " + node + " to destination nodes")
 		destinationNodes = append(destinationNodes, node)
+		if counter == int(metadata.NumChunks){
+			break
+		}
+		counter++
 	}
 	return destinationNodes
 }
@@ -52,7 +61,7 @@ func ValidatePutRequest(metadata *messages.Metadata, context *context) validatio
 	var destinationNodes []string
 	if !exists {
 		//add to bloom filter
-		d := GetDestinationNodes(context)
+		d := GetDestinationNodes(metadata, context)
 		destinationNodes = append(destinationNodes, d...)
 		log.Println("Adding destination nodes to file index")
 		context.fileIndex[fileName] = destinationNodes
@@ -68,8 +77,8 @@ func ValidatePutRequest(metadata *messages.Metadata, context *context) validatio
 
 func PackagePutResponse(validationResult *validationResult, metadata *messages.Metadata, context *context) *messages.Wrapper {
 	//metadata := &messages.Metadata{FileName: fileName, FileSize: int32(fileSize), NumChunks: x, ChunkSize: y, CheckSum: checkSum}
-	metadata.ChunkSize = int32(context.chunkSize)
-	metadata.NumChunks = (metadata.FileSize + metadata.ChunkSize - 1) / metadata.ChunkSize
+	//metadata.ChunkSize = int32(context.chunkSize)
+	//metadata.NumChunks = (metadata.FileSize + metadata.ChunkSize - 1) / metadata.ChunkSize
 	putResponse := &messages.PutResponse{Available: !validationResult.fileExists, Metadata: metadata, Nodes: validationResult.destinationNodes}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_PutResponseMessage{PutResponseMessage: putResponse},
@@ -84,8 +93,8 @@ func RegisterNode(msg *messages.Wrapper_RegistrationMessage, context *context) {
 	context.activeNodes[node + ":" + port] = struct{}{}
 	log.Println(node + " registered with controller using port " + port)
 	log.Print("Active nodes: ")
-	for k, _ := range context.activeNodes {
-		log.Printf("-> %s \n", k)
+	for node, port := range context.activeNodes {
+		log.Printf("-> %s:%s \n", node, port)
 	}
 }
 

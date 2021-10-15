@@ -111,6 +111,8 @@ func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
 	}
 }
 
+//func SendChunks(destinationNodes []string, metadata *messages.Metadata) error { }
+
 func HandleConnection(messageHandler *messages.MessageHandler) {
 	for {
 		wrapper, _ := messageHandler.Receive()
@@ -127,14 +129,24 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 			if available {
 				log.Println("Preparing to send chunks")
 				log.Println("Sending chunks to the following destinations: ")
-				fileName, fileSize, numChunks, chunkSize, checkSum := UnpackMetadata(metadata)
-				log.Printf("Metadata: \nName: %s \nSize: %d \nChunks: %d \nChunk Size: %d \n", fileName, fileSize, numChunks, chunkSize)
-				log.Printf("Checksum: %s \n", checkSum)
-				//send chunks out
-				//close connections
 				for node := range destinationNodes {
 					log.Println(destinationNodes[node])
 				}
+				fileName, fileSize, numChunks, chunkSize, checkSum := UnpackMetadata(metadata)
+				log.Printf("Metadata: \nName: %s \nSize: %d \nChunks: %d \nChunk Size: %d \n", fileName, fileSize, numChunks, chunkSize)
+				log.Printf("Checksum: %s \n", checkSum)
+
+
+				//send chunks out
+				//close connections
+
+				/*
+				err := SendChunks(destinationNodes, metadata)
+				if err != nil {
+
+				}
+
+				 */
 			} else {
 				fmt.Println("File with this name already exists, must delete first")
 				log.Println("File already exists")
