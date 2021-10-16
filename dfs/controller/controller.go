@@ -34,7 +34,8 @@ func FileExists(fileName string, context *context) bool {
 	return exists
 }
 
-func GetChunkIndex(metadata *messages.Metadata, context *context, chunkIndex map[string][]string) []string {
+func GetChunkIndex(metadata *messages.Metadata, context *context, chunkIndex map[string]string) []string {
+	//chunkIndex key -> chunkName ... value -> node
 	metadata.ChunkSize = int32(context.chunkSize)
 	metadata.NumChunks = (metadata.FileSize + metadata.ChunkSize - 1) / metadata.ChunkSize
 	destinationNodes := make([]string, 0)
@@ -55,10 +56,8 @@ func GetChunkIndex(metadata *messages.Metadata, context *context, chunkIndex map
 	for i := 0; i < int(metadata.NumChunks); i++ {
 		moddedIndex := i % numNodes
 		node := destinationNodes[moddedIndex]
-		chunkList := chunkIndex[node]
 		currentChunk := strconv.Itoa(i) + "_" + metadata.FileName
-		chunkList = append(chunkList, currentChunk)
-		chunkIndex[node] = chunkList
+		chunkIndex[currentChunk] = node
 	}
 	return destinationNodes
 }
@@ -68,7 +67,7 @@ func ValidatePutRequest(metadata *messages.Metadata, context *context) validatio
 	fileName := metadata.GetFileName()
 	exists := FileExists(fileName, context)
 	log.Println("Exists = " + strconv.FormatBool(exists))
-	chunkIndex := make(map[string][]string)
+	chunkIndex := make(map[string]string)
 	var nodeList []string
 	if !exists {
 		//add to bloom filter
@@ -77,11 +76,8 @@ func ValidatePutRequest(metadata *messages.Metadata, context *context) validatio
 		log.Println("Adding destination nodes to file index")
 		context.betterFileIndex[fileName] = chunkIndex
 		log.Println("Added the following destination nodes for filename " + fileName)
-		for node, chunkList := range chunkIndex {
-			log.Println("-> " + node)
-			for chunk := range chunkList {
-				log.Println("--> " + chunkList[chunk])
-			}
+		for chunkName, node := range chunkIndex {
+			log.Println("-> " + chunkName + " " + node)
 		}
 	} else {
 		//chunkIndex = make(map[string][]string)
@@ -154,14 +150,13 @@ func HandleConnection(conn net.Conn, context context) {
 
 func InitializeContext() (context, error) {
 	chunkSize, err := strconv.Atoi(os.Args[2])
-	return context{activeNodes: make(map[string]struct{}), betterFileIndex: make(map[string]map[string][]string), bloomFilter: make(map[string]int), chunkSize: chunkSize}, err
+	return context{activeNodes: make(map[string]struct{}), betterFileIndex: make(map[string]map[string]string), bloomFilter: make(map[string]int), chunkSize: chunkSize}, err
 }
 
 type context struct {
 	activeNodes map[string]struct{}
-	//fileIndex map[string][]string
-	//map[fileName]map[node][]string <- chunkNames
-	betterFileIndex map[string]map[string][]string
+	//                   file      chunk    node//
+	betterFileIndex map[string]map[string]string
 	bloomFilter map[string]int
 	chunkSize int
 }

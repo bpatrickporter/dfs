@@ -68,6 +68,7 @@ func HandleConnection(conn net.Conn, context context) {
 
 			log.Println("Trying to create [" + context.rootDir + fileName + "]")
 			file, err := os.Create(context.rootDir + fileName)
+			defer file.Close()
 			if err != nil {
 				fmt.Println(err.Error())
 				log.Println(err.Error())
@@ -93,7 +94,6 @@ func HandleConnection(conn net.Conn, context context) {
 			}
 
 			log.Println("File write complete")
-			file.Close()
 			/*
 			file2, err := os.Open(context.rootDir + fileName)
 			if err != nil {

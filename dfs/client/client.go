@@ -40,8 +40,14 @@ func GetMetadata(fileName string) (int, string) {
 	return int(fileSize), checkSum
 }
 
-func UnpackMetadata(metadata *messages.Metadata) (string, int, int, int, string){
-	return metadata.GetFileName(), int(metadata.GetFileSize()), int(metadata.GetNumChunks()), int(metadata.GetChunkSize()), metadata.GetCheckSum()
+func LogMetadata(metadata *messages.Metadata) {
+	fileName := metadata.GetFileName()
+	fileSize := int(metadata.GetFileSize())
+	numChunks := int(metadata.GetNumChunks())
+	chunkSize := int(metadata.GetChunkSize())
+	checkSum := metadata.GetCheckSum()
+	log.Printf("Metadata: \nName: %s \nSize: %d \nChunks: %d \nChunk Size: %d \n", fileName, fileSize, numChunks, chunkSize)
+	log.Printf("Checksum: %s \n", checkSum)
 }
 
 func UnpackPutResponse(msg *messages.Wrapper_PutResponseMessage) (bool, []string, *messages.Metadata) {
@@ -134,41 +140,27 @@ func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
 }
 
 func GetChunkIndex(metadata *messages.Metadata, destinationNodes []string) map[string]string {
+	LogMetadata(metadata)
+
 	chunkIndex := make(map[string]string)
 	for i := 0; i < int(metadata.NumChunks); i++ {
 		moddedIndex := i % len(destinationNodes)
 		node := destinationNodes[moddedIndex]
-		//chunkList := chunkIndex[node]
 		currentChunkName := strconv.Itoa(i) + "_" + metadata.FileName
-		//chunkList = append(chunkList, currentChunkName)
 		chunkIndex[currentChunkName] = node
+	}
+	for chunk, node:= range chunkIndex {
+		log.Println("-> " + chunk + " " + node)
 	}
 	return chunkIndex
 }
 
-func GetConnectionMap(destinationNodes []string) map[string]net.Conn {
-	connMap := make(map[string]net.Conn)
-	for i := range destinationNodes {
-		conn, err := net.Dial("tcp", destinationNodes[i])
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-		defer conn.Close()
-		connMap[destinationNodes[i]] = conn
-	}
-	log.Println("Connection map created")
-	for node, conn := range connMap {
-		log.Println("-> " + node + " " + conn.RemoteAddr().String())
-	}
-	return connMap
-}
-
-func SendChunks(metadata *messages.Metadata, destinationNodes []string, chunkIndex map[string]string) {
+func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
+	chunkIndex := GetChunkIndex(metadata, destinationNodes)
 
 	f, _ := os.Open(metadata.FileName)
 	log.Println("Opened file.")
 	buffer := make([]byte, metadata.ChunkSize)
-	//connMap := GetConnectionMap(destinationNodes)
 	log.Println("Preparing to write file to connections.")
 	counter := 0
 	for {
@@ -178,11 +170,9 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string, chunkInd
 		if err != nil {
 			break
 		}
-
 		currentChunk := strconv.Itoa(counter) + "_" + metadata.FileName
 		wrapper := PackagePutRequestChunk(currentChunk, metadata.ChunkSize)
 		node := chunkIndex[currentChunk]
-		//connection := connMap[node]
 		connection, err := net.Dial("tcp", node)
 		messageHandler := messages.NewMessageHandler(connection)
 		messageHandler.Send(wrapper)
@@ -202,6 +192,28 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string, chunkInd
 	f.Close()
 }
 
+func LogFileTransferStatus(status bool) {
+	if status {
+		fmt.Println("File transfer successful")
+		log.Println("File transfer successful")
+	} else {
+		fmt.Println("File transfer unsuccessful: checksums don't match")
+		log.Println("File transfer unsuccessful: checksums don't match")
+	}
+}
+
+func LogDestinationNodes(destinationNodes []string) {
+	log.Println("Sending chunks to the following destinations: ")
+	for node := range destinationNodes {
+		log.Println(destinationNodes[node])
+	}
+}
+
+func LogFileAlreadyExists() {
+	fmt.Println("File with this name already exists, must delete first")
+	log.Println("File already exists")
+}
+
 func HandleConnection(messageHandler *messages.MessageHandler) {
 	for {
 		wrapper, _ := messageHandler.Receive()
@@ -209,44 +221,19 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 		switch msg := wrapper.Msg.(type) {
 		case *messages.Wrapper_AcknowledgeMessage:
 			status := msg.AcknowledgeMessage.GetCheckSumMatched()
-			fmt.Println("File transfer status: " + strconv.FormatBool(status))
+			LogFileTransferStatus(status)
 		case *messages.Wrapper_PutResponseMessage:
 			available, destinationNodes, metadata := UnpackPutResponse(msg)
 			if available {
-
-				log.Println("Preparing to send chunks")
-				log.Println("Sending chunks to the following destinations: ")
-				for node := range destinationNodes {
-					log.Println(destinationNodes[node])
-				}
-
-
-				fileName, fileSize, numChunks, chunkSize, checkSum := UnpackMetadata(metadata)
-				log.Printf("Metadata: \nName: %s \nSize: %d \nChunks: %d \nChunk Size: %d \n", fileName, fileSize, numChunks, chunkSize)
-				log.Printf("Checksum: %s \n", checkSum)
-
-
-				chunkIndex := GetChunkIndex(metadata, destinationNodes)
-
-				for chunk, node:= range chunkIndex {
-					log.Println("-> " + chunk + " " + node)
-				}
-
-
-				SendChunks(metadata, destinationNodes, chunkIndex)
-
+				LogDestinationNodes(destinationNodes)
+				SendChunks(metadata, destinationNodes)
 			} else {
-				fmt.Println("File with this name already exists, must delete first")
-				log.Println("File already exists")
+				LogFileAlreadyExists()
 			}
-			//return?
 		case *messages.Wrapper_GetResponseMessage:
 			log.Println("Get Response message received")
-			//go get chunks
-			//return
 		case *messages.Wrapper_DeleteResponseMessage:
 			log.Println("Delete Response message received")
-			//return
 		default:
 			continue
 		}
