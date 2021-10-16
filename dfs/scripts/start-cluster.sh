@@ -6,8 +6,8 @@ log_dir="${script_dir}/logs"
 source "${script_dir}/nodes.sh"
 
 echo "Installing..."
-go install controller.go   || exit 1 # Exit if compile+install fails
-go install storage_node.go || exit 1 # Exit if compile+install fails
+go install ../controller/controller.go   || exit 1 # Exit if compile+install fails
+go install ../node/node.go || exit 1 # Exit if compile+install fails
 echo "Done!"
 
 echo "Creating log directory: ${log_dir}"
