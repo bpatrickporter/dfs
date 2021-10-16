@@ -21,7 +21,11 @@ func HandleArgs() (string, string, string, string) {
 }
 
 func InitializeLogger() {
-	file, err := os.OpenFile("logs/node_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalln()
+	}
+	file, err := os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/" + hostname  + "_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
