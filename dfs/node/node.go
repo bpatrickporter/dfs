@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 )
 
 func HandleArgs() (string, string, string, string) {
@@ -60,39 +59,42 @@ func HandleConnection(conn net.Conn, context context) {
 		request, _ := messageHandler.Receive()
 		switch msg := request.Msg.(type) {
 		case *messages.Wrapper_PutRequestMessage:
-			log.Println("Put request received")
+			log.Println("Put request received for")
 			metadata := msg.PutRequestMessage.GetMetadata()
 			fileName := metadata.GetFileName()
+			log.Println("-> " + fileName)
 			chunkSize := metadata.GetChunkSize()
-			checkSum := metadata.GetCheckSum()
+			//checkSum := metadata.GetCheckSum()
 
+			log.Println("Trying to create [" + context.rootDir + fileName + "]")
 			file, err := os.Create(context.rootDir + fileName)
-			log.Println("File created")
 			if err != nil {
 				fmt.Println(err.Error())
+				log.Println(err.Error())
+				return
 			}
-
+			log.Println("File created" + fileName)
 			buffer := make([]byte, chunkSize)
 			writer := bufio.NewWriter(file)
 
-			log.Println("Preparing to write file")
-			for {
-				numBytes, err := conn.Read(buffer)
-				if err != nil {
-					fmt.Println(err.Error())
-					break
-				}
-				reader := bytes.NewReader(buffer)
-				_, err = io.CopyN(writer, reader, int64(numBytes))
-				if err != nil {
-					fmt.Println(err.Error())
-					break
-				}
-				if numBytes < int(chunkSize) {
-					break
-				}
+			log.Println("Preparing to write chunk")
+			numBytes, err := conn.Read(buffer)
+			log.Println("Read from conn: " + strconv.Itoa(numBytes))
+			if err != nil {
+				fmt.Println(err.Error())
 			}
+			reader := bytes.NewReader(buffer)
+			log.Println("read bytes into buffer")
+			_, err = io.CopyN(writer, reader, int64(numBytes))
+			log.Println("Copied buffer to writer")
+			if err != nil {
+				fmt.Println(err.Error())
+				break
+			}
+
 			log.Println("File write complete")
+			file.Close()
+			/*
 			file2, err := os.Open(context.rootDir + fileName)
 			if err != nil {
 				fmt.Println(err.Error())
@@ -110,6 +112,8 @@ func HandleConnection(conn net.Conn, context context) {
 			if err != nil {
 				return
 			}
+
+			 */
 		case nil:
 			log.Println("Received an empty message, terminating client")
 			messageHandler.Close()
