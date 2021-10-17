@@ -24,6 +24,7 @@ func HandleArgs() (string, string) {
 
 func InitializeLogger() {
 	file, err := os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/client_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	//file, err := os.OpenFile("logs/client_logs.txt", os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -58,18 +59,43 @@ func UnpackPutResponse(msg *messages.Wrapper_PutResponseMessage) (bool, []string
 	return available, nodes, metadata
 }
 
+func UnpackDeleteResponse(msg *messages.Wrapper_DeleteResponseMessage) (bool, []*messages.KeyValuePair){
+	fileExists := msg.DeleteResponseMessage.Available
+	chunkLocations := msg.DeleteResponseMessage.Pairs
+	log.Println("Delete Response message received")
+	log.Println("File exists: " + strconv.FormatBool(fileExists))
+	for entry := range chunkLocations {
+		log.Println(chunkLocations[entry].Key + " @ " + chunkLocations[entry].Value)
+	}
+	if !fileExists {
+		fmt.Println("File doesn't exist")
+	}
+	return fileExists, chunkLocations
+}
+
 func PackagePutRequest(fileName string) *messages.Wrapper {
+	log.Println("Put input received")
 	fileSize, checkSum := GetMetadata(fileName)
 	metadata := &messages.Metadata{FileName: fileName, FileSize: int32(fileSize), CheckSum: checkSum}
 	msg := messages.PutRequest{Metadata: metadata}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
 	}
+	log.Println("Sending put request")
 	return wrapper
 }
 
-func PackagePutRequestChunk(currentChunk string, chunkSize int32) *messages.Wrapper {
-	metadata := &messages.Metadata{FileName: currentChunk, ChunkSize: chunkSize}
+func PackageDeleteRequest(fileName string) *messages.Wrapper {
+	msg := messages.DeleteRequest{FileName: fileName}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_DeleteRequestMessage{DeleteRequestMessage: &msg},
+	}
+	log.Println("Sending delete request")
+	return wrapper
+}
+
+func PackagePutRequestChunk(currentChunk string, chunkSize int32, checkSum string) *messages.Wrapper {
+	metadata := &messages.Metadata{FileName: currentChunk, ChunkSize: chunkSize, CheckSum: checkSum}
 	msg := messages.PutRequest{Metadata: metadata}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
@@ -80,63 +106,11 @@ func PackagePutRequestChunk(currentChunk string, chunkSize int32) *messages.Wrap
 	return wrapper
 }
 
-func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
-	message := scanner.Text()
-	if len(message) != 0 {
-
-		var wrapper *messages.Wrapper
-		controllerMessageHandler := messages.NewMessageHandler(controllerConn)
-
-		if strings.HasPrefix(message, "put"){
-			var trimmed = strings.TrimPrefix(message, "/")
-			var words = strings.Split(trimmed, " ")
-			var fileName = words[1]
-			wrapper = PackagePutRequest(fileName)
-			log.Println("Sending metadata.")
-			controllerMessageHandler.Send(wrapper)
-			go HandleConnection(controllerMessageHandler)
-
-			/*
-				f, _ := os.Open(file)
-				log.Println("Opened file.")
-				buffer := make([]byte, chunkSize)
-				reader := bytes.NewReader(buffer)
-				conn := messageHandler.GetConn()
-				writer := bufio.NewWriter(conn)
-				log.Println("Preparing to write file to connection.")
-				for {
-					log.Println("writing..")
-					numBytes, err := f.Read(buffer)
-					reader = bytes.NewReader(buffer)
-					if err != nil {
-						break
-					}
-					_, err = io.CopyN(writer, reader, int64(numBytes))
-					if err != nil {
-						fmt.Print(err.Error())
-						break
-					}
-				}
-				f.Close()
-
-			*/
-			log.Println("Done writing to connection.")
-		} else if strings.HasPrefix(message, "get") {
-			fmt.Println("get received")
-			//send get request
-			//go handleConnection()
-		} else if strings.HasPrefix(message, "delete") {
-			fmt.Println("delete received")
-			//send dlete request
-			//go handleconnection
-		} else if strings.HasPrefix(message, "ls") {
-			fmt.Println("ls received")
-			//send ls request
-			//go handleconnection
-		} else {
-			fmt.Println("error ")
-		}
-	}
+func GetFileName(message string) string {
+	trimmed := strings.TrimPrefix(message, "/")
+	words := strings.Split(trimmed, " ")
+	fileName := words[1]
+	return fileName
 }
 
 func GetChunkIndex(metadata *messages.Metadata, destinationNodes []string) map[string]string {
@@ -155,50 +129,13 @@ func GetChunkIndex(metadata *messages.Metadata, destinationNodes []string) map[s
 	return chunkIndex
 }
 
-func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
-	chunkIndex := GetChunkIndex(metadata, destinationNodes)
-
-	f, _ := os.Open(metadata.FileName)
-	log.Println("Opened file.")
-	buffer := make([]byte, metadata.ChunkSize)
-	log.Println("Preparing to write file to connections.")
-	counter := 0
-	for {
-		log.Println("writing..")
-		numBytes, err := f.Read(buffer)
-		reader := bytes.NewReader(buffer)
-		if err != nil {
-			break
-		}
-		currentChunk := strconv.Itoa(counter) + "_" + metadata.FileName
-		wrapper := PackagePutRequestChunk(currentChunk, metadata.ChunkSize)
-		node := chunkIndex[currentChunk]
-		connection, err := net.Dial("tcp", node)
-		messageHandler := messages.NewMessageHandler(connection)
-		messageHandler.Send(wrapper)
-		log.Println("Wrapper sent")
-		writer := bufio.NewWriter(connection)
-		log.Println("writer created")
-		_, err = io.CopyN(writer, reader, int64(numBytes))
-		log.Println("copyN called")
-		if err != nil {
-			fmt.Print(err.Error())
-			break
-		}
-		log.Printf("%d bytes sent\n", numBytes)
-		counter++
-		messageHandler.Close()
-	}
-	f.Close()
-}
-
 func LogFileTransferStatus(status bool) {
 	if status {
-		fmt.Println("File transfer successful")
-		log.Println("File transfer successful")
+		//fmt.Println("Chunk transfer successful")
+		log.Println("Chunk transfer successful")
 	} else {
-		fmt.Println("File transfer unsuccessful: checksums don't match")
-		log.Println("File transfer unsuccessful: checksums don't match")
+		//fmt.Println("Chunk transfer unsuccessful: checksums don't match")
+		log.Println("Chunk transfer unsuccessful: checksums don't match")
 	}
 }
 
@@ -214,6 +151,50 @@ func LogFileAlreadyExists() {
 	log.Println("File already exists")
 }
 
+func DeleteChunks(locations *messages.KeyValuePair) {
+
+}
+
+func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
+	chunkIndex := GetChunkIndex(metadata, destinationNodes)
+
+	f, _ := os.Open(metadata.FileName)
+	log.Println("Opened file.")
+	buffer := make([]byte, metadata.ChunkSize)
+	log.Println("Preparing to write file to connections.")
+	counter := 0
+	for {
+		log.Println("writing..")
+		numBytes, err := f.Read(buffer)
+		checkSum := messages.GetChunkCheckSum(buffer)
+		reader := bytes.NewReader(buffer)
+		if err != nil {
+			break
+		}
+		currentChunk := strconv.Itoa(counter) + "_" + metadata.FileName
+		wrapper := PackagePutRequestChunk(currentChunk, metadata.ChunkSize, checkSum)
+		node := chunkIndex[currentChunk]
+		connection, err := net.Dial("tcp", node)
+		messageHandler := messages.NewMessageHandler(connection)
+		messageHandler.Send(wrapper)
+		log.Println("Wrapper sent")
+		writer := bufio.NewWriter(connection)
+		log.Println("writer created")
+		_, err = io.CopyN(writer, reader, int64(numBytes))
+		log.Println("copyN called")
+		if err != nil {
+			fmt.Print(err.Error())
+			break
+		}
+		log.Printf("%d bytes sent\n", numBytes)
+		counter++
+		//go HandleConnection(messageHandler)
+		//instead of waiting for ack we'll simplify this for now and close the connection
+	}
+	f.Close()
+	fmt.Println("File saved")
+}
+
 func HandleConnection(messageHandler *messages.MessageHandler) {
 	for {
 		wrapper, _ := messageHandler.Receive()
@@ -222,6 +203,8 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 		case *messages.Wrapper_AcknowledgeMessage:
 			status := msg.AcknowledgeMessage.GetCheckSumMatched()
 			LogFileTransferStatus(status)
+			messageHandler.Close()
+			return
 		case *messages.Wrapper_PutResponseMessage:
 			available, destinationNodes, metadata := UnpackPutResponse(msg)
 			if available {
@@ -230,12 +213,50 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 			} else {
 				LogFileAlreadyExists()
 			}
+			return
 		case *messages.Wrapper_GetResponseMessage:
 			log.Println("Get Response message received")
 		case *messages.Wrapper_DeleteResponseMessage:
-			log.Println("Delete Response message received")
+			fileExists, _ := UnpackDeleteResponse(msg)
+			if fileExists {
+				//DeleteChunks(locations)
+				fmt.Println("File deleted")
+			}
+			return
 		default:
 			continue
+		}
+	}
+}
+
+func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
+	message := scanner.Text()
+	if len(message) != 0 {
+		var wrapper *messages.Wrapper
+		controllerMessageHandler := messages.NewMessageHandler(controllerConn)
+
+		if strings.HasPrefix(message, "put"){
+			fileName := GetFileName(message)
+			wrapper = PackagePutRequest(fileName)
+			controllerMessageHandler.Send(wrapper)
+			HandleConnection(controllerMessageHandler)
+		} else if strings.HasPrefix(message, "get") {
+			fmt.Println("get received")
+			//send get request
+			//go handleConnection()
+		} else if strings.HasPrefix(message, "delete") {
+			fileName := GetFileName(message)
+			wrapper := PackageDeleteRequest(fileName)
+			controllerMessageHandler.Send(wrapper)
+			HandleConnection(controllerMessageHandler)
+			//send dlete request
+			//go handleconnection
+		} else if strings.HasPrefix(message, "ls") {
+			fmt.Println("ls received")
+			//send ls request
+			//go handleconnection
+		} else {
+			fmt.Println("error ")
 		}
 	}
 }

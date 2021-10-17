@@ -35,11 +35,12 @@ message GetResponse {
 }
 
 message DeleteRequest {
-    string file_name = 1;
+    string fileName = 1;
 }
 
 message DeleteResponse {
-    bool successful = 1;
+    bool available = 1;
+    repeated KeyValuePair pairs = 2;
 }
 
 message Registration {
@@ -49,6 +50,11 @@ message Registration {
 
 message Heartbeat {
     string node = 1;
+}
+
+message KeyValuePair {
+    string key = 1;
+    string value = 2;
 }
 
 message Wrapper {
