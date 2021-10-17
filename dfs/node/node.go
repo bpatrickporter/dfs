@@ -22,14 +22,13 @@ func HandleArgs() (string, string, string, string) {
 }
 
 func InitializeLogger() {
-
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalln()
 	}
+	file, err := os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/" + hostname  + "_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
 
-	file, err := os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/" + hostname  + "_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	//file, err := os.OpenFile("logs/node_logs.txt", os.O_CREATE|os.O_WRONLY, 0666)
+	//file, err := os.OpenFile("logs/node_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -143,6 +142,15 @@ func HandleConnection(conn net.Conn, context context) {
 			//results := VerifyCheckSumsMatch(metadata, context)
 			VerifyCheckSumsMatch(metadata, context)
 			//SendAck(results, messageHandler)
+		case *messages.Wrapper_DeleteRequestMessage:
+			fileName := msg.DeleteRequestMessage.FileName
+			log.Println("Delete chunk request received for " + fileName)
+			err := os.Remove(context.rootDir + fileName)
+			if err != nil {
+				log.Fatalln(err.Error())
+			} else {
+				log.Println("Chunk deleted")
+			}
 		case nil:
 			log.Println("Received an empty message, terminating client")
 			messageHandler.Close()

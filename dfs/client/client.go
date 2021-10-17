@@ -23,8 +23,8 @@ func HandleArgs() (string, string) {
 }
 
 func InitializeLogger() {
-	file, err := os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/client_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	//file, err := os.OpenFile("logs/client_logs.txt", os.O_CREATE|os.O_WRONLY, 0666)
+	file, err := os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/client_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+	//file, err := os.OpenFile("logs/client_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -151,14 +151,27 @@ func LogFileAlreadyExists() {
 	log.Println("File already exists")
 }
 
-func DeleteChunks(locations *messages.KeyValuePair) {
-
+func DeleteChunks(locations []*messages.KeyValuePair) {
+	for entry := range locations {
+		chunk := locations[entry].Key
+		node := locations[entry].Value
+		wrapper := PackageDeleteRequest(chunk)
+		conn, err := net.Dial("tcp", node)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+		messageHandler := messages.NewMessageHandler(conn)
+		messageHandler.Send(wrapper)
+		log.Println("Delete chunk request sent")
+		messageHandler.Close()
+	}
 }
 
 func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 	chunkIndex := GetChunkIndex(metadata, destinationNodes)
 
 	f, _ := os.Open(metadata.FileName)
+	defer f.Close()
 	log.Println("Opened file.")
 	buffer := make([]byte, metadata.ChunkSize)
 	log.Println("Preparing to write file to connections.")
@@ -174,11 +187,11 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 		currentChunk := strconv.Itoa(counter) + "_" + metadata.FileName
 		wrapper := PackagePutRequestChunk(currentChunk, metadata.ChunkSize, checkSum)
 		node := chunkIndex[currentChunk]
-		connection, err := net.Dial("tcp", node)
-		messageHandler := messages.NewMessageHandler(connection)
+		conn, err := net.Dial("tcp", node)
+		messageHandler := messages.NewMessageHandler(conn)
 		messageHandler.Send(wrapper)
 		log.Println("Wrapper sent")
-		writer := bufio.NewWriter(connection)
+		writer := bufio.NewWriter(conn)
 		log.Println("writer created")
 		_, err = io.CopyN(writer, reader, int64(numBytes))
 		log.Println("copyN called")
@@ -190,8 +203,8 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 		counter++
 		//go HandleConnection(messageHandler)
 		//instead of waiting for ack we'll simplify this for now and close the connection
+		messageHandler.Close()
 	}
-	f.Close()
 	fmt.Println("File saved")
 }
 
@@ -217,9 +230,9 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 		case *messages.Wrapper_GetResponseMessage:
 			log.Println("Get Response message received")
 		case *messages.Wrapper_DeleteResponseMessage:
-			fileExists, _ := UnpackDeleteResponse(msg)
+			fileExists, locations := UnpackDeleteResponse(msg)
 			if fileExists {
-				//DeleteChunks(locations)
+				DeleteChunks(locations)
 				fmt.Println("File deleted")
 			}
 			return
