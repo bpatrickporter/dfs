@@ -41,7 +41,7 @@ message GetResponse {
 }
 
 message GetResponseChunk {
-    string chunk_name = 1;
+    ChunkMetadata chunk_metadata = 1;
     Metadata metadata = 2;
 }
 

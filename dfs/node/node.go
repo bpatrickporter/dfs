@@ -27,7 +27,6 @@ func InitializeLogger() {
 		log.Fatalln()
 	}
 	file, err := os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/" + hostname  + "_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
-
 	//file, err := os.OpenFile("logs/node_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
@@ -73,6 +72,24 @@ func UnpackChunkMetadata(metadata *messages.ChunkMetadata) (string, int, string)
 	chunkSize := metadata.ChunkSize
 	checkSum := metadata.ChunkCheckSum
 	return chunkName, int(chunkSize), checkSum
+}
+
+func PackageMetadata(context context, chunkName string) (*messages.Metadata, *messages.ChunkMetadata){
+	contents, err := os.ReadFile(context.rootDir + "meta_" + chunkName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	string := string(contents)
+	slices := strings.Split(string, ",")
+	fileName := slices[0]
+	fileSize, _ := strconv.Atoi(slices[1])
+	numChunks, _ := strconv.Atoi(slices[2])
+	chunkSize, _ := strconv.Atoi(slices[3])
+	checkSum := slices[4]
+	chunkCheckSum := slices[5]
+	metadata := &messages.Metadata{FileName: fileName, FileSize: int32(fileSize), NumChunks: int32(numChunks), ChunkSize: int32(chunkSize), CheckSum: checkSum}
+	chunkMetadata := &messages.ChunkMetadata{ChunkName: chunkName, ChunkSize: int32(chunkSize), ChunkCheckSum: chunkCheckSum}
+	return metadata, chunkMetadata
 }
 
 func WriteMetadataFile(metadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, context context) error {
@@ -200,9 +217,11 @@ func HandleConnection(conn net.Conn, context context) {
 				log.Fatalln(err.Error())
 			}
 			defer file.Close()
-			ms := messages.GetResponseChunk{ChunkName: chunkName}
+
+			metadata, chunkMetadata := PackageMetadata(context, chunkName)
+			message := &messages.GetResponseChunk{ChunkMetadata: chunkMetadata, Metadata: metadata}
 			wrapper := &messages.Wrapper{
-				Msg: &messages.Wrapper_GetResponseChunkMessage{GetResponseChunkMessage: &ms},
+				Msg: &messages.Wrapper_GetResponseChunkMessage{GetResponseChunkMessage: message},
 			}
 			messageHandler.Send(wrapper)
 			log.Println("Get response chunk message sent")

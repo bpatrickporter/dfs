@@ -266,8 +266,11 @@ func GetIndex(chunkName string) (string, string) {
 	return index, fileName
 }
 
-func WriteChunk(chunkName string, messageHandler *messages.MessageHandler) {
+func WriteChunk(metadata *messages.ChunkMetadata, messageHandler *messages.MessageHandler) {
 	log.Println("Chunk message received")
+	chunkName := metadata.ChunkName
+	chunkSize := metadata.ChunkSize
+
 	index, fileName := GetIndex(chunkName)
 	i, err := strconv.Atoi(index)
 	if err != nil {
@@ -287,7 +290,7 @@ func WriteChunk(chunkName string, messageHandler *messages.MessageHandler) {
 	fmt.Print(chunkName + " -> ")
 	reader := bytes.NewReader(buffer[:numBytes])
 	_, err = io.CopyN(writer, reader, int64(numBytes))
-	file.WriteAt(buffer[:numBytes], int64(i * 5))
+	file.WriteAt(buffer[:numBytes], int64(i * int(chunkSize)))
 
 	fmt.Print("\n")
 	if err != nil {
@@ -302,9 +305,8 @@ func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.
 		switch msg := wrapper.Msg.(type) {
 		case *messages.Wrapper_GetResponseChunkMessage:
 			defer waitGroup.Done()
-			chunkName := msg.GetResponseChunkMessage.ChunkName
-			WriteChunk(chunkName, messageHandler)
-			//verify checksums-how to verify checksum after last chunk is received?
+			metadata := msg.GetResponseChunkMessage.ChunkMetadata
+			WriteChunk(metadata, messageHandler)
 			messageHandler.Close()
 			return
 		default:
@@ -337,12 +339,6 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 			if fileExists {
 				GetChunks(locations)
 			}
-			return
-		case *messages.Wrapper_GetResponseChunkMessage:
-			chunkName := msg.GetResponseChunkMessage.ChunkName
-			WriteChunk(chunkName, messageHandler)
-			//verify checksums-how to verify checksum after last chunk is received?
-			messageHandler.Close()
 			return
 		case *messages.Wrapper_DeleteResponseMessage:
 			fileExists, locations := UnpackDeleteResponse(msg)
