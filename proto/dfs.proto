@@ -10,12 +10,19 @@ message Metadata {
     string check_sum = 5;
 }
 
+message ChunkMetadata {
+    string chunk_name = 1;
+    int32 chunk_size = 2;
+    string chunk_check_sum = 3;
+}
+
 message Ack {
     bool check_sum_matched = 1;
 }
 
 message PutRequest {
     Metadata metadata = 1;
+    ChunkMetadata chunk_metadata = 2;
 }
 
 message PutResponse {
@@ -30,17 +37,21 @@ message GetRequest {
 
 message GetResponse {
     bool exists = 1;
-    int32 numChunks = 2;
-    repeated string nodes = 3;
+    repeated KeyValuePair chunk_node_pairs = 2;
+}
+
+message GetResponseChunk {
+    string chunk_name = 1;
+    Metadata metadata = 2;
 }
 
 message DeleteRequest {
-    string fileName = 1;
+    string file_name = 1;
 }
 
 message DeleteResponse {
     bool available = 1;
-    repeated KeyValuePair pairs = 2;
+    repeated KeyValuePair chunk_node_pairs = 2;
 }
 
 message Registration {
@@ -64,9 +75,10 @@ message Wrapper {
         PutResponse put_response_message = 3;
         GetRequest get_request_message = 4;
         GetResponse get_response_message = 5;
-        DeleteRequest delete_request_message = 6;
-        DeleteResponse delete_response_message = 7;
-        Registration registration_message = 8;
-        Heartbeat heartbeat_message = 9;
+        GetResponseChunk get_response_chunk_message = 6;
+        DeleteRequest delete_request_message = 7;
+        DeleteResponse delete_response_message = 8;
+        Registration registration_message = 9;
+        Heartbeat heartbeat_message = 10;
     }
 }

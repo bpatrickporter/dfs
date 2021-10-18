@@ -59,30 +59,69 @@ func RegisterWithController(context context) error {
 	return err
 }
 
-func LogMetadata(metadata *messages.Metadata) {
-	//fileName := metadata.GetFileName()
-	//fileSize := int(metadata.GetFileSize())
-	//numChunks := int(metadata.GetNumChunks())
-	//chunkSize := int(metadata.GetChunkSize())
-	//checkSum := metadata.GetCheckSum()
-	log.Println("Put request received for")
-	log.Println("-> " + metadata.String())
+func UnpackMetadata(metadata *messages.Metadata) (string, int, int, int, string) {
+	fileName := metadata.GetFileName()
+	fileSize := int(metadata.GetFileSize())
+	numChunks := int(metadata.GetNumChunks())
+	chunkSize := int(metadata.GetChunkSize())
+	checkSum := metadata.GetCheckSum()
+	return fileName, fileSize, numChunks, chunkSize, checkSum
 }
 
-func WriteChunk(metadata *messages.Metadata, messageHandler *messages.MessageHandler, context context) error {
-	fileName := metadata.FileName
+func UnpackChunkMetadata(metadata *messages.ChunkMetadata) (string, int, string) {
+	chunkName := metadata.ChunkName
 	chunkSize := metadata.ChunkSize
-	conn := messageHandler.GetConn()
+	checkSum := metadata.ChunkCheckSum
+	return chunkName, int(chunkSize), checkSum
+}
 
-	log.Println("Trying to create [" + context.rootDir + fileName + "]")
-	file, err := os.Create(context.rootDir + fileName)
+func WriteMetadataFile(metadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, context context) error {
+	fileName, fileSize, numChunks, chunkSize, checkSum := UnpackMetadata(metadata)
+	chunkName, chunkSize, chunkCheckSum := UnpackChunkMetadata(chunkMetadata)
+
+	log.Println("Trying to create [" + context.rootDir + "meta_" + chunkName + "]")
+	file, err := os.Create(context.rootDir + "meta_"+ chunkName)
 	defer file.Close()
 	if err != nil {
 		fmt.Println(err.Error())
 		log.Println(err.Error())
 		return err
 	}
-	log.Println("File created" + fileName)
+	log.Println("Metadata file created for" + chunkName)
+
+	metadataBytes := []byte(fileName + "," + strconv.Itoa(fileSize) + "," + strconv.Itoa(numChunks) + "," + strconv.Itoa(int(chunkSize))+ "," + checkSum + "," + chunkCheckSum)
+
+	w := bufio.NewWriter(file)
+	r := bytes.NewReader(metadataBytes)
+	count, _ := r.Read(metadataBytes)
+	r2 := bytes.NewReader(metadataBytes)
+	bs, err:= io.CopyN(w, r2, int64(count))
+	fmt.Println("wrote metadata bytes: " + strconv.Itoa(int(bs)))
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	return err
+}
+
+func WriteChunk(metadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, messageHandler *messages.MessageHandler, context context) error {
+	conn := messageHandler.GetConn()
+	chunkName, chunkSize, _ := UnpackChunkMetadata(chunkMetadata)
+	err := WriteMetadataFile(metadata, chunkMetadata, context)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	//create file for chunk
+	log.Println("Trying to create [" + context.rootDir + chunkName + "]")
+	file, err := os.Create(context.rootDir + chunkName)
+	defer file.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+		log.Println(err.Error())
+		return err
+	}
+	log.Println("Chunk file created for " + chunkName)
+
 	buffer := make([]byte, chunkSize)
 	writer := bufio.NewWriter(file)
 
@@ -105,14 +144,14 @@ func WriteChunk(metadata *messages.Metadata, messageHandler *messages.MessageHan
 	return err
 }
 
-func VerifyCheckSumsMatch(metadata *messages.Metadata, context context) bool {
-	file, err := os.Open(context.rootDir + metadata.FileName)
+func VerifyCheckSumsMatch(metadata *messages.ChunkMetadata, context context) bool {
+	file, err := os.Open(context.rootDir + metadata.ChunkName)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
 	checkSum := messages.GetCheckSum(*file)
-	checkSumResults := strings.Compare(metadata.CheckSum, checkSum) == 0
-	log.Println("Original Checksum: " + metadata.CheckSum)
+	checkSumResults := strings.Compare(metadata.ChunkCheckSum, checkSum) == 0
+	log.Println("Original Checksum: " + metadata.ChunkCheckSum)
 	log.Println("New Checksum     : " + checkSum)
 	log.Println("Checksums match: " + strconv.FormatBool(checkSumResults))
 	return checkSumResults
@@ -137,10 +176,12 @@ func HandleConnection(conn net.Conn, context context) {
 		switch msg := request.Msg.(type) {
 		case *messages.Wrapper_PutRequestMessage:
 			metadata := msg.PutRequestMessage.Metadata
-			LogMetadata(metadata)
-			WriteChunk(metadata, messageHandler, context)
+			chunkMetadata := msg.PutRequestMessage.ChunkMetadata
+			log.Println("Put request received for")
+			log.Println("-> " + metadata.String())
+			WriteChunk(metadata, chunkMetadata, messageHandler, context)
 			//results := VerifyCheckSumsMatch(metadata, context)
-			VerifyCheckSumsMatch(metadata, context)
+			VerifyCheckSumsMatch(chunkMetadata, context)
 			//SendAck(results, messageHandler)
 		case *messages.Wrapper_DeleteRequestMessage:
 			fileName := msg.DeleteRequestMessage.FileName
@@ -151,6 +192,23 @@ func HandleConnection(conn net.Conn, context context) {
 			} else {
 				log.Println("Chunk deleted")
 			}
+		case *messages.Wrapper_GetRequestMessage:
+			chunkName := msg.GetRequestMessage.FileName
+			log.Println("Get chunk message received for " + chunkName)
+			file, err := os.Open(context.rootDir + chunkName)
+			if err != nil {
+				log.Fatalln(err.Error())
+			}
+			defer file.Close()
+			ms := messages.GetResponseChunk{ChunkName: chunkName}
+			wrapper := &messages.Wrapper{
+				Msg: &messages.Wrapper_GetResponseChunkMessage{GetResponseChunkMessage: &ms},
+			}
+			messageHandler.Send(wrapper)
+			log.Println("Get response chunk message sent")
+			writer := bufio.NewWriter(messageHandler.GetConn())
+			bytes, err := io.Copy(writer, file)
+			log.Println("Sent " + strconv.Itoa(int(bytes)) + " bytes")
 		case nil:
 			log.Println("Received an empty message, terminating client")
 			messageHandler.Close()

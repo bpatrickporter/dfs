@@ -110,7 +110,7 @@ func PackagePutResponse(validationResult validationResult, metadata *messages.Me
 	return wrapper
 }
 
-func PackageDeleteResponse(result locationResult, fileName string, context context) *messages.Wrapper {
+func PackageDeleteResponse(result locationResult) *messages.Wrapper {
 	//chunk node
 	pairs := make([]*messages.KeyValuePair, 0)
 
@@ -125,11 +125,33 @@ func PackageDeleteResponse(result locationResult, fileName string, context conte
 		}
 	}
 
-	deleteResponse := &messages.DeleteResponse{Available: result.fileExists, Pairs: pairs}
+	deleteResponse := &messages.DeleteResponse{Available: result.fileExists, ChunkNodePairs: pairs}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_DeleteResponseMessage{DeleteResponseMessage: deleteResponse},
 	}
 	log.Println("Sending delete response to client")
+	return wrapper
+}
+
+func PackageGetResponse(result locationResult) *messages.Wrapper {
+	pairs := make([]*messages.KeyValuePair, 0)
+
+	if result.fileExists {
+		for chunk, node := range result.chunkLocation {
+			pair := messages.KeyValuePair{Key: chunk, Value: node}
+			pairs = append(pairs, &pair)
+		}
+		log.Println("Sending response with the following node locations: ")
+		for entry := range pairs {
+			log.Println(pairs[entry].Key + " @ " + pairs[entry].Value)
+		}
+	}
+
+	getResponse := &messages.GetResponse{Exists: result.fileExists, ChunkNodePairs: pairs}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_GetResponseMessage{GetResponseMessage: getResponse},
+	}
+	log.Println("Sending get response to client")
 	return wrapper
 }
 
@@ -166,19 +188,25 @@ func HandleConnection(conn net.Conn, context context) {
 			messageHandler.Send(wrapper)
 		case *messages.Wrapper_GetRequestMessage:
 			log.Println("Get request message received")
-			//check if files exists
-			//find out where its at
-			//send list to client
-		case *messages.Wrapper_DeleteRequestMessage: //from client
+			fileName := msg.GetRequestMessage.FileName
+			results := LocateFile(fileName, &context)
+			if results.fileExists {
+				log.Println("file exists")
+			} else {
+				log.Println("file doesn't exist")
+			}
+			wrapper := PackageGetResponse(results)
+			messageHandler.Send(wrapper)
+		case *messages.Wrapper_DeleteRequestMessage:
 			log.Println("Delete request message received")
 			fileName := msg.DeleteRequestMessage.FileName
 			results := LocateFile(fileName, &context)
 			if results.fileExists {
 				DeleteFileFromIndex(fileName, context)
 			}
-			wrapper := PackageDeleteResponse(results, fileName, context)
+			wrapper := PackageDeleteResponse(results)
 			messageHandler.Send(wrapper)
-		case *messages.Wrapper_HeartbeatMessage: //from nodes
+		case *messages.Wrapper_HeartbeatMessage:
 			log.Println("Heartbeat received")
 		case nil:
 			fmt.Println("Received an empty message, termination connection.")
