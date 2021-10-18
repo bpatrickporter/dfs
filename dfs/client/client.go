@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 func HandleArgs() (string, string) {
@@ -237,7 +238,9 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 }
 
 func GetChunks(locations []*messages.KeyValuePair) {
-	fmt.Println("Going to get chunks")
+	log.Println("Going to get chunks")
+	var wg sync.WaitGroup
+
 	for entry := range locations {
 		chunk := locations[entry].Key
 		node := locations[entry].Value
@@ -249,8 +252,11 @@ func GetChunks(locations []*messages.KeyValuePair) {
 		messageHandler := messages.NewMessageHandler(conn)
 		messageHandler.Send(wrapper)
 		log.Println("Get chunk request sent to node")
-		go HandleConnection(messageHandler)
+		wg.Add(1)
+		go HandleConnections(messageHandler, &wg)
 	}
+	wg.Wait()
+	fmt.Println("File downloaded")
 }
 
 func GetIndex(chunkName string) (string, string) {
@@ -289,6 +295,24 @@ func WriteChunk(chunkName string, messageHandler *messages.MessageHandler) {
 	}
 }
 
+func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.WaitGroup) {
+	for {
+		wrapper, _ := messageHandler.Receive()
+
+		switch msg := wrapper.Msg.(type) {
+		case *messages.Wrapper_GetResponseChunkMessage:
+			defer waitGroup.Done()
+			chunkName := msg.GetResponseChunkMessage.ChunkName
+			WriteChunk(chunkName, messageHandler)
+			//verify checksums-how to verify checksum after last chunk is received?
+			messageHandler.Close()
+			return
+		default:
+			continue
+		}
+	}
+}
+
 func HandleConnection(messageHandler *messages.MessageHandler) {
 	for {
 		wrapper, _ := messageHandler.Receive()
@@ -313,11 +337,13 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 			if fileExists {
 				GetChunks(locations)
 			}
+			return
 		case *messages.Wrapper_GetResponseChunkMessage:
 			chunkName := msg.GetResponseChunkMessage.ChunkName
 			WriteChunk(chunkName, messageHandler)
 			//verify checksums-how to verify checksum after last chunk is received?
 			messageHandler.Close()
+			return
 		case *messages.Wrapper_DeleteResponseMessage:
 			fileExists, locations := UnpackDeleteResponse(msg)
 			if fileExists {
@@ -343,7 +369,6 @@ func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
 			controllerMessageHandler.Send(wrapper)
 			HandleConnection(controllerMessageHandler)
 		} else if strings.HasPrefix(message, "get") {
-			fmt.Println("get received")
 			fileName := GetFileName(message)
 			wrapper = PackageGetRequest(fileName)
 			controllerMessageHandler.Send(wrapper)
@@ -376,6 +401,7 @@ func main() {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
+		fmt.Print(">")
 		if result := scanner.Scan(); result != false {
 			HandleInput(scanner, controllerConn)
 		}
