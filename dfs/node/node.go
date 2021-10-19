@@ -58,9 +58,14 @@ func RegisterWithController(context context) error {
 	if err != nil {
 		log.Fatalln()
 	}
-	conn, err := net.Dial("tcp", context.controllerName + ":" + context.controllerPort)
-	if err != nil {
-		log.Fatalln(err.Error())
+	var conn net.Conn
+	for {
+		if conn, err = net.Dial("tcp", context.controllerName + ":" + context.controllerPort); err != nil {
+			log.Println(err.Error())
+			time.Sleep(2 * time.Second)
+		} else {
+			break
+		}
 	}
 	log.Println("Connected to controller: " + context.controllerName + ":" + context.controllerPort)
 	registration := &messages.Registration{Node: hostname, Port: context.listeningPort}
@@ -309,13 +314,12 @@ func main() {
 		return
 	}
 	go SendHeartBeats(context)
-	var listener net.Listener
-	for {
-		if listener, err = net.Listen("tcp", ":" + context.listeningPort); err != nil {
-			log.Println(err.Error())
-			time.Sleep(2 * time.Second)
-		} else { break }
+
+	listener, err := net.Listen("tcp", ":" + context.listeningPort)
+	if err != nil {
+		log.Fatalln(err.Error())
 	}
+
 	for {
 		if conn, err := listener.Accept(); err == nil {
 			go HandleConnection(conn, context)
