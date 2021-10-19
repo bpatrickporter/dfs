@@ -111,6 +111,16 @@ func GetListing(directory string, context context) string {
 	return result
 }
 
+func GetInfo(context context) ([]string, string, []*messages.KeyValuePair) {
+	var nodes []string
+	for node, _ := range context.activeNodes {
+		nodes = append(nodes, node)
+	}
+	diskSpace := "100 TB"
+	requests := []*messages.KeyValuePair{{Key: "orion01", Value: "4"}, {Key: "orion02", Value: "5"}}
+	return nodes, diskSpace, requests
+}
+
 func ValidatePutRequest(metadata *messages.Metadata, context context) validationResult {
 	log.Println("Checking file index for file")
 	CalculateNumChunks(metadata, context)
@@ -224,6 +234,14 @@ func PackageLSResponse(listing string) *messages.Wrapper {
 	return wrapper
 }
 
+func PackageInfoResponse(nodes []string, diskSpace string, requestsPerNode []*messages.KeyValuePair) *messages.Wrapper {
+	infoResponse := &messages.InfoResponse{Nodes: nodes, AvailableDiskSpace: diskSpace, RequestsPerNode: requestsPerNode}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_InfoResponse{InfoResponse: infoResponse},
+	}
+	return wrapper
+}
+
 func RegisterNode(msg *messages.Wrapper_RegistrationMessage, context *context) {
 	node := msg.RegistrationMessage.GetNode()
 	port := msg.RegistrationMessage.GetPort()
@@ -287,6 +305,10 @@ func HandleConnection(conn net.Conn, context context) {
 			directory := msg.LsRequest.Directory
 			listing := GetListing(directory, context)
 			wrapper := PackageLSResponse(listing)
+			messageHandler.Send(wrapper)
+		case *messages.Wrapper_InfoRequest:
+			nodeList, diskSpace, requestsPerNode := GetInfo(context)
+			wrapper := PackageInfoResponse(nodeList, diskSpace, requestsPerNode)
 			messageHandler.Send(wrapper)
 		case nil:
 			fmt.Println("Received an empty message, termination connection.")

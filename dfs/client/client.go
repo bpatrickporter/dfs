@@ -153,6 +153,18 @@ func PackageGetRequest(fileName string) *messages.Wrapper {
 	return wrapper
 }
 
+func PrintInfoResponse(response *messages.InfoResponse) {
+	fmt.Println("Active Nodes")
+	for node := range response.Nodes {
+		fmt.Println(">" + response.Nodes[node])
+	}
+	fmt.Println("\nDisk Space: " + response.AvailableDiskSpace + "\n")
+	fmt.Println("Requests Per Node")
+	for _, pair := range response.RequestsPerNode {
+		fmt.Println(">" + pair.Key + ": " + pair.Value)
+	}
+}
+
 func GetParam(message string) string {
 	words := strings.Split(message, " ")
 	if len(words) < 2 {
@@ -367,6 +379,9 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 		case *messages.Wrapper_LsResponse:
 			fmt.Print(msg.LsResponse.Listing)
 			return
+		case *messages.Wrapper_InfoResponse:
+			PrintInfoResponse(msg.InfoResponse)
+			return
 		default:
 			continue
 		}
@@ -402,6 +417,15 @@ func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
 			}
 			controllerMessageHandler.Send(wrapper)
 			HandleConnection(controllerMessageHandler)
+		} else if strings.HasPrefix(message, "info"){
+			infoRequest := &messages.InfoRequest{}
+			wrapper := &messages.Wrapper{
+				Msg: &messages.Wrapper_InfoRequest{InfoRequest: infoRequest},
+			}
+			controllerMessageHandler.Send(wrapper)
+			HandleConnection(controllerMessageHandler)
+		} else if strings.HasPrefix(message, "help"){
+			fmt.Println("Available commands:\nput <file_name>\nget <file_name>\ndelete <file_name>\nls <directory>\ninfo")
 		} else {
 			fmt.Println("error ")
 		}
