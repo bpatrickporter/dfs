@@ -37,7 +37,9 @@ message GetRequest {
 
 message GetResponse {
     bool exists = 1;
-    repeated KeyValuePair chunk_node_pairs = 2;
+    ///repeated KeyValuePair chunk_node_pairs = 2;
+    repeated string chunks = 2;
+    repeated string nodes = 3;
 }
 
 message GetResponseChunk {
@@ -51,7 +53,8 @@ message DeleteRequest {
 
 message DeleteResponse {
     bool available = 1;
-    repeated KeyValuePair chunk_node_pairs = 2;
+    repeated string chunks = 2;
+    repeated string nodes = 3;
 }
 
 message Registration {

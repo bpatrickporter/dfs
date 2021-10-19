@@ -183,20 +183,21 @@ func PackagePutResponse(validationResult validationResult, metadata *messages.Me
 
 func PackageDeleteResponse(result locationResult) *messages.Wrapper {
 	//chunk node
-	pairs := make([]*messages.KeyValuePair, 0)
+	chunks := make([]string, 0)
+	nodes := make([]string, 0)
 
 	if result.fileExists {
 		for chunk, node := range result.chunkLocation {
-			pair := messages.KeyValuePair{Key: chunk, Value: node}
-			pairs = append(pairs, &pair)
+			chunks = append(chunks, chunk)
+			nodes = append(nodes, node)
 		}
 		log.Println("Sending response with the following node locations: ")
-		for entry := range pairs {
-			log.Println(pairs[entry].Key + " @ " + pairs[entry].Value)
+		for i := range nodes {
+			log.Println(chunks[i] + " @ " + nodes[i])
 		}
 	}
 
-	deleteResponse := &messages.DeleteResponse{Available: result.fileExists, ChunkNodePairs: pairs}
+	deleteResponse := &messages.DeleteResponse{Available: result.fileExists, Chunks: chunks, Nodes: nodes}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_DeleteResponseMessage{DeleteResponseMessage: deleteResponse},
 	}
@@ -205,20 +206,25 @@ func PackageDeleteResponse(result locationResult) *messages.Wrapper {
 }
 
 func PackageGetResponse(result locationResult) *messages.Wrapper {
-	pairs := make([]*messages.KeyValuePair, 0)
+	//pairs := make([]*messages.KeyValuePair, 0)
+	chunks := make([]string, 0)
+	nodes := make([]string, 0)
+
 
 	if result.fileExists {
 		for chunk, node := range result.chunkLocation {
-			pair := messages.KeyValuePair{Key: chunk, Value: node}
-			pairs = append(pairs, &pair)
+			//pair := messages.KeyValuePair{Key: chunk, Value: node}
+			//pairs = append(pairs, &pair)
+			chunks = append(chunks, chunk)
+			nodes = append(nodes, node)
 		}
 		log.Println("Sending response with the following node locations: ")
-		for entry := range pairs {
-			log.Println(pairs[entry].Key + " @ " + pairs[entry].Value)
+		for i := range chunks {
+			log.Println(chunks[i] + " @ " + nodes[i])
 		}
 	}
 
-	getResponse := &messages.GetResponse{Exists: result.fileExists, ChunkNodePairs: pairs}
+	getResponse := &messages.GetResponse{Exists: result.fileExists, Chunks: chunks, Nodes: nodes}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_GetResponseMessage{GetResponseMessage: getResponse},
 	}
@@ -392,6 +398,22 @@ type context struct {
 	//what we need
 	//node -> [chunk01, chunk02] (if a node goes down, we know we need to duplicate these chunks
 	//chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
+
+	//what we need
+
+	//bloom filter
+
+	//create a new file everytime a node is registered, just lists the chunks stored there, add to it with every
+	//save, how do we delete from it? could be append only? only read last line, to remove, read last line, remove
+	//one chunk, write new line?
+	//node -> [chunk01, chunk02] (if a node goes down, we know we need to duplicate these chunks
+
+	//fileToChunkToNodesIndex moves to files in ls directory, add lines to file for every chunk (chunk, node, node, node
+	//chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
+
+	//Initiate recovery
+
+	//Node to node passes
 }
 
 type validationResult struct {

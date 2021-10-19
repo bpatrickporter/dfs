@@ -80,32 +80,36 @@ func UnpackPutResponse(msg *messages.Wrapper_PutResponseMessage) (bool, []string
 	return available, nodes, metadata
 }
 
-func UnpackDeleteResponse(msg *messages.Wrapper_DeleteResponseMessage) (bool, []*messages.KeyValuePair){
+func UnpackDeleteResponse(msg *messages.Wrapper_DeleteResponseMessage) (bool, []string, []string){
 	fileExists := msg.DeleteResponseMessage.Available
-	chunkLocations := msg.DeleteResponseMessage.ChunkNodePairs
+	//chunkLocations := msg.DeleteResponseMessage.ChunkNodePairs
+	chunks := msg.DeleteResponseMessage.Chunks
+	nodes := msg.DeleteResponseMessage.Nodes
 	log.Println("Delete Response message received")
 	log.Println("File exists: " + strconv.FormatBool(fileExists))
-	for entry := range chunkLocations {
-		log.Println(chunkLocations[entry].Key + " @ " + chunkLocations[entry].Value)
+	for i := range chunks {
+		log.Println(chunks[i] + " @ " + nodes[i])
 	}
 	if !fileExists {
 		fmt.Println("File doesn't exist")
 	}
-	return fileExists, chunkLocations
+	return fileExists, chunks, nodes
 }
 
-func UnpackGetResponse(msg *messages.Wrapper_GetResponseMessage) (bool, []*messages.KeyValuePair) {
+func UnpackGetResponse(msg *messages.Wrapper_GetResponseMessage) (bool, []string, []string) {
 	fileExists := msg.GetResponseMessage.Exists
-	chunkLocations := msg.GetResponseMessage.ChunkNodePairs
+	//chunkLocations := msg.GetResponseMessage.ChunkNodePairs
+	chunks := msg.GetResponseMessage.Chunks
+	nodes := msg.GetResponseMessage.Nodes
 	log.Println("Get Response message received")
 	log.Println("File exists: " + strconv.FormatBool(fileExists))
-	for entry := range chunkLocations {
-		log.Println(chunkLocations[entry].Key + " @ " + chunkLocations[entry].Value)
+	for i := range chunks {
+		log.Println(chunks[i] + " @ " + nodes[i])
 	}
 	if !fileExists {
 		fmt.Println("File doesn't exist")
 	}
-	return fileExists, chunkLocations
+	return fileExists, chunks, nodes
 }
 
 func PackagePutRequest(fileName string) *messages.Wrapper {
@@ -212,10 +216,10 @@ func LogFileAlreadyExists() {
 	log.Println("File already exists")
 }
 
-func DeleteChunks(locations []*messages.KeyValuePair) {
-	for entry := range locations {
-		chunk := locations[entry].Key
-		node := locations[entry].Value
+func DeleteChunks(chunks []string, nodes []string) {
+	for i := range chunks {
+		chunk := chunks[i]
+		node := nodes[i]
 		wrapper := PackageDeleteRequest(chunk)
 		conn, err := net.Dial("tcp", node)
 		if err != nil {
@@ -271,13 +275,13 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 	fmt.Println("File saved")
 }
 
-func GetChunks(locations []*messages.KeyValuePair) {
+func GetChunks(chunks []string, nodes []string) {
 	log.Println("Going to get chunks")
 	var wg sync.WaitGroup
 
-	for entry := range locations {
-		chunk := locations[entry].Key
-		node := locations[entry].Value
+	for i := range chunks {
+		chunk := chunks[i]
+		node := nodes[i]
 		wrapper := PackageGetRequest(chunk)
 		conn, err := net.Dial("tcp", node)
 		if err != nil {
@@ -364,15 +368,15 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 			}
 			return
 		case *messages.Wrapper_GetResponseMessage:
-			fileExists, locations := UnpackGetResponse(msg)
+			fileExists, chunks, nodes := UnpackGetResponse(msg)
 			if fileExists {
-				GetChunks(locations)
+				GetChunks(chunks, nodes)
 			}
 			return
 		case *messages.Wrapper_DeleteResponseMessage:
-			fileExists, locations := UnpackDeleteResponse(msg)
+			fileExists, chunks, nodes := UnpackDeleteResponse(msg)
 			if fileExists {
-				DeleteChunks(locations)
+				DeleteChunks(chunks, nodes)
 				fmt.Println("File deleted")
 			}
 			return
