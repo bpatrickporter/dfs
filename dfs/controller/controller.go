@@ -1,17 +1,41 @@
 package main
 
 import (
+	"bufio"
 	"dfs/messages"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"strconv"
+	"strings"
 )
 
+func IsHostOrion() (string, bool) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalln()
+	}
+	shortHostName:= strings.Split(hostname, ".")[0]
+	var isOrion bool
+	if strings.HasPrefix(shortHostName, "orion") {
+		isOrion = true
+	} else {
+		isOrion = false
+	}
+	return shortHostName, isOrion
+}
+
 func InitializeLogger() {
-	file, err := os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/controller_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
-	//file, err := os.OpenFile("logs/controller_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+
+	var file *os.File
+	var err error
+
+	if _, isOrion := IsHostOrion(); isOrion {
+		file, err = os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/controller_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+	} else {
+		file, err = os.OpenFile("logs/controller_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -19,13 +43,14 @@ func InitializeLogger() {
 	log.Println("Controller start up complete")
 }
 
-func UnpackMetadata(metadata *messages.Metadata) (string, int32, string){
+func UnpackMetadata(metadata *messages.Metadata) (string, int, int, int, string){
 	log.Println("Put request received")
 	log.Println("Unpacking file metadata")
-	return metadata.GetFileName(), metadata.GetFileSize(), metadata.GetCheckSum()
+	log.Println(metadata)
+	return metadata.GetFileName(), int(metadata.GetFileSize()), int(metadata.GetNumChunks()), int(metadata.GetChunkSize()), metadata.GetCheckSum()
 }
 
-func FileExists(fileName string, context *context) (map[string]string, bool) {
+func FindFile(fileName string, context context) (map[string]string, bool) {
 	chunkToNodeMap, exists := context.betterFileIndex[fileName]
 	if exists {
 		log.Println("Result: File exists")
@@ -35,10 +60,13 @@ func FileExists(fileName string, context *context) (map[string]string, bool) {
 	return chunkToNodeMap, exists
 }
 
-func GetChunkIndex(metadata *messages.Metadata, context *context, chunkIndex map[string]string) []string {
-	//chunkIndex key -> chunkName ... value -> node
+func CalculateNumChunks(metadata *messages.Metadata, context context) {
 	metadata.ChunkSize = int32(context.chunkSize)
 	metadata.NumChunks = (metadata.FileSize + metadata.ChunkSize - 1) / metadata.ChunkSize
+}
+
+func GetChunkIndex(metadata *messages.Metadata, context context, chunkIndex map[string]string) []string {
+	//chunkIndex key -> chunkName ... value -> node
 	destinationNodes := make([]string, 0)
 
 	counter := 1
@@ -63,10 +91,31 @@ func GetChunkIndex(metadata *messages.Metadata, context *context, chunkIndex map
 	return destinationNodes
 }
 
-func ValidatePutRequest(metadata *messages.Metadata, context *context) validationResult {
+func GetListing(directory string, context context) string {
+	localDirectory := context.lsDirectory + directory
+	dirEntries, err := os.ReadDir(localDirectory)
+	var result string
+	if err != nil {
+		log.Println("Dir " + localDirectory + ": not a directory")
+		result = "ls: " + directory + ": not a directory\n"
+ 	} else {
+		 result = ""
+		for i := range dirEntries {
+			if dirEntries[i].IsDir() {
+				result = result + "/" + dirEntries[i].Name() + "\n"
+			} else {
+				result = result + dirEntries[i].Name() + "\n"
+			}
+		}
+	}
+	return result
+}
+
+func ValidatePutRequest(metadata *messages.Metadata, context context) validationResult {
 	log.Println("Checking file index for file")
-	fileName := metadata.GetFileName()
-	_, exists := FileExists(fileName, context)
+	CalculateNumChunks(metadata, context)
+	fileName, fileSize, numChunks, chunkSize, checkSum := UnpackMetadata(metadata)
+	_, exists := FindFile(fileName, context)
 	log.Println("Exists = " + strconv.FormatBool(exists))
 	chunkIndex := make(map[string]string)
 	var nodeList []string
@@ -75,19 +124,30 @@ func ValidatePutRequest(metadata *messages.Metadata, context *context) validatio
 		nodeList = GetChunkIndex(metadata, context, chunkIndex)
 		log.Println("Adding destination nodes to file index")
 		context.betterFileIndex[fileName] = chunkIndex
+
+		//adding file to ls directory to support ls client commands
+		file, err := os.OpenFile(context.lsDirectory + fileName, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+		if err != nil {
+			log.Println(err.Error())
+		}
+		defer file.Close()
+		metadataBytes := []byte(fileName + "," + strconv.Itoa(fileSize) + "," + strconv.Itoa(numChunks) + "," + strconv.Itoa(chunkSize) + "," + checkSum)
 		log.Println("Added the following destination nodes for filename " + fileName)
 		for chunkName, node := range chunkIndex {
 			log.Println("-> " + chunkName + " " + node)
 		}
+		w := bufio.NewWriter(file)
+		w.Write(metadataBytes)
+		w.Flush()
 	} else {
 		nodeList = make([]string, 0)
 	}
 	return validationResult{fileExists: exists, nodeList: nodeList}
 }
 
-func LocateFile(fileName string, context *context) locationResult {
+func FindChunks(fileName string, context context) locationResult {
 	log.Println("Checking file index for file")
-	chunkToNodeMap, exists := FileExists(fileName, context)
+	chunkToNodeMap, exists := FindFile(fileName, context)
 	log.Println("Exists = " + strconv.FormatBool(exists))
 
 	if !exists {
@@ -155,6 +215,15 @@ func PackageGetResponse(result locationResult) *messages.Wrapper {
 	return wrapper
 }
 
+func PackageLSResponse(listing string) *messages.Wrapper {
+	lsResponse := &messages.LSResponse{Listing: listing}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_LsResponse{LsResponse: lsResponse},
+	}
+	log.Println("Sending ls response to client")
+	return wrapper
+}
+
 func RegisterNode(msg *messages.Wrapper_RegistrationMessage, context *context) {
 	node := msg.RegistrationMessage.GetNode()
 	port := msg.RegistrationMessage.GetPort()
@@ -168,6 +237,12 @@ func RegisterNode(msg *messages.Wrapper_RegistrationMessage, context *context) {
 
 func DeleteFileFromIndex(fileName string, context context) {
 	delete(context.betterFileIndex, fileName)
+	//delete from ls directory
+	localDirectory := context.lsDirectory + fileName
+	err := os.Remove(localDirectory)
+	if err != nil {
+		log.Fatalln()
+	}
 	log.Println("Deleted " + fileName + " from file index")
 }
 
@@ -183,13 +258,13 @@ func HandleConnection(conn net.Conn, context context) {
 			return
 		case *messages.Wrapper_PutRequestMessage:
 			metadata := msg.PutRequestMessage.GetMetadata()
-			validationResult := ValidatePutRequest(metadata, &context)
+			validationResult := ValidatePutRequest(metadata, context)
 			wrapper := PackagePutResponse(validationResult, metadata, &context)
 			messageHandler.Send(wrapper)
 		case *messages.Wrapper_GetRequestMessage:
 			log.Println("Get request message received")
 			fileName := msg.GetRequestMessage.FileName
-			results := LocateFile(fileName, &context)
+			results := FindChunks(fileName, context)
 			if results.fileExists {
 				log.Println("file exists")
 			} else {
@@ -200,7 +275,7 @@ func HandleConnection(conn net.Conn, context context) {
 		case *messages.Wrapper_DeleteRequestMessage:
 			log.Println("Delete request message received")
 			fileName := msg.DeleteRequestMessage.FileName
-			results := LocateFile(fileName, &context)
+			results := FindChunks(fileName, context)
 			if results.fileExists {
 				DeleteFileFromIndex(fileName, context)
 			}
@@ -208,6 +283,11 @@ func HandleConnection(conn net.Conn, context context) {
 			messageHandler.Send(wrapper)
 		case *messages.Wrapper_HeartbeatMessage:
 			log.Println("Heartbeat received")
+		case *messages.Wrapper_LsRequest:
+			directory := msg.LsRequest.Directory
+			listing := GetListing(directory, context)
+			wrapper := PackageLSResponse(listing)
+			messageHandler.Send(wrapper)
 		case nil:
 			fmt.Println("Received an empty message, termination connection.")
 			messageHandler.Close()
@@ -220,7 +300,18 @@ func HandleConnection(conn net.Conn, context context) {
 
 func InitializeContext() (context, error) {
 	chunkSize, err := strconv.Atoi(os.Args[2])
-	return context{activeNodes: make(map[string]struct{}), betterFileIndex: make(map[string]map[string]string), bloomFilter: make(map[string]int), chunkSize: chunkSize}, err
+	var lsDirectory string
+	if _, isOrion := IsHostOrion(); isOrion {
+		lsDirectory = "/bigdata/bpporter/ls/"
+	} else {
+		lsDirectory = "/Users/pport/677/ls/"
+	}
+	return context{activeNodes: make(map[string]struct{}),
+		betterFileIndex: make(map[string]map[string]string),
+		bloomFilter: make(map[string]int),
+		chunkSize: chunkSize,
+		lsDirectory: lsDirectory},
+		err
 }
 
 type context struct {
@@ -229,6 +320,11 @@ type context struct {
 	betterFileIndex map[string]map[string]string
 	bloomFilter map[string]int
 	chunkSize int
+	lsDirectory string
+
+	//what we need
+	//node -> [chunk01, chunk02] (if a node goes down, we know we need to duplicate these chunks
+	//chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
 }
 
 type validationResult struct {

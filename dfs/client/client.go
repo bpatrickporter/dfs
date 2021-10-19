@@ -23,9 +23,29 @@ func HandleArgs() (string, string) {
 	return controller, port
 }
 
+func IsHostOrion() (string, bool) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalln()
+	}
+	shortHostName:= strings.Split(hostname, ".")[0]
+	var isOrion bool
+	if strings.HasPrefix(shortHostName, "orion") {
+		isOrion = true
+	} else {
+		isOrion = false
+	}
+	return shortHostName, isOrion
+}
+
 func InitializeLogger() {
-	file, err := os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/client_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
-	//file, err := os.OpenFile("logs/client_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+	var file *os.File
+	var err error
+	if _, isOrion := IsHostOrion(); isOrion {
+		file, err = os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/client_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+	} else {
+		file, err = os.OpenFile("logs/client_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -133,11 +153,13 @@ func PackageGetRequest(fileName string) *messages.Wrapper {
 	return wrapper
 }
 
-func GetFileName(message string) string {
-	trimmed := strings.TrimPrefix(message, "/")
-	words := strings.Split(trimmed, " ")
-	fileName := words[1]
-	return fileName
+func GetParam(message string) string {
+	words := strings.Split(message, " ")
+	if len(words) < 2 {
+		return ""
+	} else {
+		return words[1]
+	}
 }
 
 func GetChunkIndex(metadata *messages.Metadata, destinationNodes []string) map[string]string {
@@ -268,31 +290,26 @@ func GetIndex(chunkName string) (string, string) {
 
 func WriteChunk(metadata *messages.ChunkMetadata, messageHandler *messages.MessageHandler) {
 	log.Println("Chunk message received")
-	chunkName := metadata.ChunkName
-	chunkSize := metadata.ChunkSize
 
-	index, fileName := GetIndex(chunkName)
+	index, fileName := GetIndex(metadata.ChunkName)
 	i, err := strconv.Atoi(index)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
+
 	file, err := os.OpenFile("copy_" + fileName, os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
+
 	conn := messageHandler.GetConn()
-	buffer := make([]byte, 5)
-	writer := bufio.NewWriter(os.Stdout)
+	buffer := make([]byte, int(metadata.ChunkSize))
 	numBytes, err := conn.Read(buffer)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
-	fmt.Print(chunkName + " -> ")
-	reader := bytes.NewReader(buffer[:numBytes])
-	_, err = io.CopyN(writer, reader, int64(numBytes))
-	file.WriteAt(buffer[:numBytes], int64(i * int(chunkSize)))
 
-	fmt.Print("\n")
+	_, err = file.WriteAt(buffer[:numBytes], int64(i * int(metadata.ChunkSize)))
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -347,6 +364,9 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 				fmt.Println("File deleted")
 			}
 			return
+		case *messages.Wrapper_LsResponse:
+			fmt.Print(msg.LsResponse.Listing)
+			return
 		default:
 			continue
 		}
@@ -360,24 +380,28 @@ func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
 		controllerMessageHandler := messages.NewMessageHandler(controllerConn)
 
 		if strings.HasPrefix(message, "put"){
-			fileName := GetFileName(message)
+			fileName := GetParam(message)
 			wrapper = PackagePutRequest(fileName)
 			controllerMessageHandler.Send(wrapper)
 			HandleConnection(controllerMessageHandler)
 		} else if strings.HasPrefix(message, "get") {
-			fileName := GetFileName(message)
+			fileName := GetParam(message)
 			wrapper = PackageGetRequest(fileName)
 			controllerMessageHandler.Send(wrapper)
 			HandleConnection(controllerMessageHandler)
 		} else if strings.HasPrefix(message, "delete") {
-			fileName := GetFileName(message)
+			fileName := GetParam(message)
 			wrapper = PackageDeleteRequest(fileName)
 			controllerMessageHandler.Send(wrapper)
 			HandleConnection(controllerMessageHandler)
 		} else if strings.HasPrefix(message, "ls") {
-			fmt.Println("ls received")
-			//send ls request
-			//handleconnection
+			directory := GetParam(message)
+			lsRequest := &messages.LSRequest{Directory: directory}
+			wrapper := &messages.Wrapper{
+				Msg: &messages.Wrapper_LsRequest{LsRequest: lsRequest},
+			}
+			controllerMessageHandler.Send(wrapper)
+			HandleConnection(controllerMessageHandler)
 		} else {
 			fmt.Println("error ")
 		}

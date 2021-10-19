@@ -21,13 +21,30 @@ func HandleArgs() (string, string, string, string) {
 	return listeningPort, rootDir, controllerName, controllerPort
 }
 
-func InitializeLogger() {
+func IsHostOrion() (string, bool) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalln()
 	}
-	file, err := os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/" + hostname  + "_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
-	//file, err := os.OpenFile("logs/node_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+	shortHostName:= strings.Split(hostname, ".")[0]
+	var isOrion bool
+	if strings.HasPrefix(shortHostName, "orion") {
+		isOrion = true
+	} else {
+		isOrion = false
+	}
+	return shortHostName, isOrion
+}
+
+func InitializeLogger() {
+	var file *os.File
+	var err error
+
+	if host, isOrion := IsHostOrion(); isOrion {
+		file, err = os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/" + host + "_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+	} else {
+		file, err = os.OpenFile("logs/node_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -109,18 +126,20 @@ func WriteMetadataFile(metadata *messages.Metadata, chunkMetadata *messages.Chun
 	metadataBytes := []byte(fileName + "," + strconv.Itoa(fileSize) + "," + strconv.Itoa(numChunks) + "," + strconv.Itoa(int(chunkSize))+ "," + checkSum + "," + chunkCheckSum)
 
 	w := bufio.NewWriter(file)
-	r := bytes.NewReader(metadataBytes)
-	count, _ := r.Read(metadataBytes)
-	r2 := bytes.NewReader(metadataBytes)
-	bs, err:= io.CopyN(w, r2, int64(count))
-	fmt.Println("wrote metadata bytes: " + strconv.Itoa(int(bs)))
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
+	//r := bytes.NewReader(metadataBytes)
+	//count, _ := r.Read(metadataBytes)
+	//r2 := bytes.NewReader(metadataBytes)
+	//bs, err:= io.CopyN(w, r2, int64(count))
+	w.Write(metadataBytes)
+	w.Flush()
+	fmt.Println("Wrote metadata")
 	return err
 }
 
 func WriteChunk(metadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, messageHandler *messages.MessageHandler, context context) error {
+	log.Println("Put request received for")
+	log.Println("-> " + metadata.String())
+
 	conn := messageHandler.GetConn()
 	chunkName, chunkSize, _ := UnpackChunkMetadata(chunkMetadata)
 	err := WriteMetadataFile(metadata, chunkMetadata, context)
@@ -185,6 +204,39 @@ func SendAck(results bool, messageHandler *messages.MessageHandler) error {
 	return err
 }
 
+func DeleteChunk(chunkName string, context context) {
+	log.Println("Delete chunk request received for " + chunkName)
+	err := os.Remove(context.rootDir + chunkName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	err = os.Remove(context.rootDir + "meta_" + chunkName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	log.Println("File deleted")
+}
+
+func SendChunk(chunkName string, context context, messageHandler *messages.MessageHandler) {
+	log.Println("Get chunk message received for " + chunkName)
+	file, err := os.Open(context.rootDir + chunkName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	defer file.Close()
+
+	metadata, chunkMetadata := PackageMetadata(context, chunkName)
+	message := &messages.GetResponseChunk{ChunkMetadata: chunkMetadata, Metadata: metadata}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_GetResponseChunkMessage{GetResponseChunkMessage: message},
+	}
+	messageHandler.Send(wrapper)
+	log.Println("Get response chunk message sent")
+	writer := bufio.NewWriter(messageHandler.GetConn())
+	bytes, err := io.Copy(writer, file)
+	log.Println("Sent " + strconv.Itoa(int(bytes)) + " bytes")
+}
+
 func HandleConnection(conn net.Conn, context context) {
 	log.Println("Accepted a connection from " + conn.RemoteAddr().String())
 	messageHandler := messages.NewMessageHandler(conn)
@@ -194,40 +246,16 @@ func HandleConnection(conn net.Conn, context context) {
 		case *messages.Wrapper_PutRequestMessage:
 			metadata := msg.PutRequestMessage.Metadata
 			chunkMetadata := msg.PutRequestMessage.ChunkMetadata
-			log.Println("Put request received for")
-			log.Println("-> " + metadata.String())
 			WriteChunk(metadata, chunkMetadata, messageHandler, context)
 			//results := VerifyCheckSumsMatch(metadata, context)
 			VerifyCheckSumsMatch(chunkMetadata, context)
 			//SendAck(results, messageHandler)
 		case *messages.Wrapper_DeleteRequestMessage:
-			fileName := msg.DeleteRequestMessage.FileName
-			log.Println("Delete chunk request received for " + fileName)
-			err := os.Remove(context.rootDir + fileName)
-			if err != nil {
-				log.Fatalln(err.Error())
-			} else {
-				log.Println("Chunk deleted")
-			}
+			chunkName := msg.DeleteRequestMessage.FileName
+			DeleteChunk(chunkName, context)
 		case *messages.Wrapper_GetRequestMessage:
 			chunkName := msg.GetRequestMessage.FileName
-			log.Println("Get chunk message received for " + chunkName)
-			file, err := os.Open(context.rootDir + chunkName)
-			if err != nil {
-				log.Fatalln(err.Error())
-			}
-			defer file.Close()
-
-			metadata, chunkMetadata := PackageMetadata(context, chunkName)
-			message := &messages.GetResponseChunk{ChunkMetadata: chunkMetadata, Metadata: metadata}
-			wrapper := &messages.Wrapper{
-				Msg: &messages.Wrapper_GetResponseChunkMessage{GetResponseChunkMessage: message},
-			}
-			messageHandler.Send(wrapper)
-			log.Println("Get response chunk message sent")
-			writer := bufio.NewWriter(messageHandler.GetConn())
-			bytes, err := io.Copy(writer, file)
-			log.Println("Sent " + strconv.Itoa(int(bytes)) + " bytes")
+			SendChunk(chunkName, context, messageHandler)
 		case nil:
 			log.Println("Received an empty message, terminating client")
 			messageHandler.Close()
