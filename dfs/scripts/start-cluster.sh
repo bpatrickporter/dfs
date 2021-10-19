@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-log_dir="${script_dir}/stdout_logs"
+log_dir="${script_dir}/logs"
 chunk_size=5
 controller_port=8989
 node_port=8988
