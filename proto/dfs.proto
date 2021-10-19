@@ -28,7 +28,7 @@ message PutRequest {
 message PutResponse {
     bool available = 1;
     Metadata metadata = 2;
-    repeated string nodes = 3;
+    repeated KeyValuePair chunkToNodeIndex = 3;
 }
 
 message GetRequest {

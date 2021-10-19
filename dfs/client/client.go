@@ -72,12 +72,12 @@ func LogMetadata(metadata *messages.Metadata) {
 	log.Printf("Checksum: %s \n", checkSum)
 }
 
-func UnpackPutResponse(msg *messages.Wrapper_PutResponseMessage) (bool, []string, *messages.Metadata) {
+func UnpackPutResponse(msg *messages.Wrapper_PutResponseMessage) (bool, []*messages.KeyValuePair, *messages.Metadata) {
 	available := msg.PutResponseMessage.GetAvailable()
-	nodes := msg.PutResponseMessage.GetNodes()
+	chunkToNodeIndex := msg.PutResponseMessage.GetChunkToNodeIndex()
 	metadata := msg.PutResponseMessage.GetMetadata()
 	log.Println("Received put response status: " + strconv.FormatBool(available))
-	return available, nodes, metadata
+	return available, chunkToNodeIndex, metadata
 }
 
 func UnpackDeleteResponse(msg *messages.Wrapper_DeleteResponseMessage) (bool, []*messages.KeyValuePair){
@@ -174,7 +174,7 @@ func GetParam(message string) string {
 	}
 }
 
-func GetChunkIndex(metadata *messages.Metadata, destinationNodes []string) map[string]string {
+func GetChunkToNodeIndex(metadata *messages.Metadata, destinationNodes []string) map[string]string {
 	LogMetadata(metadata)
 
 	chunkIndex := make(map[string]string)
@@ -200,10 +200,10 @@ func LogFileTransferStatus(status bool) {
 	}
 }
 
-func LogDestinationNodes(destinationNodes []string) {
+func LogDestinationNodes(destinationNodes []*messages.KeyValuePair) {
 	log.Println("Sending chunks to the following destinations: ")
-	for node := range destinationNodes {
-		log.Println(destinationNodes[node])
+	for _, pair := range destinationNodes {
+		log.Println(pair.Key + " : " + pair.Value)
 	}
 }
 
@@ -228,8 +228,8 @@ func DeleteChunks(locations []*messages.KeyValuePair) {
 	}
 }
 
-func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
-	chunkIndex := GetChunkIndex(metadata, destinationNodes)
+func SendChunks(metadata *messages.Metadata, chunkToNodeIndex []*messages.KeyValuePair) {
+	//chunkIndex := GetChunkToNodeIndex(metadata, destinationNodes)
 
 	f, err := os.Open(metadata.FileName)
 	if err != nil {
@@ -248,9 +248,11 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 		if err != nil {
 			break
 		}
-		currentChunk := strconv.Itoa(counter) + "_" + metadata.FileName
+		//currentChunk := strconv.Itoa(counter) + "_" + metadata.FileName
+		currentChunk := chunkToNodeIndex[counter].Key
+		node := chunkToNodeIndex[counter].Value
 		wrapper := PackagePutRequestChunk(currentChunk, metadata, checkSum)
-		node := chunkIndex[currentChunk]
+		//node := chunkIndex[currentChunk]
 		conn, err := net.Dial("tcp", node)
 		messageHandler := messages.NewMessageHandler(conn)
 		messageHandler.Send(wrapper)
@@ -355,10 +357,10 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 			messageHandler.Close()
 			return
 		case *messages.Wrapper_PutResponseMessage:
-			available, destinationNodes, metadata := UnpackPutResponse(msg)
+			available, chunkToNodeIndex, metadata := UnpackPutResponse(msg)
 			if available {
-				LogDestinationNodes(destinationNodes)
-				SendChunks(metadata, destinationNodes)
+				LogDestinationNodes(chunkToNodeIndex)
+				SendChunks(metadata, chunkToNodeIndex)
 			} else {
 				LogFileAlreadyExists()
 			}

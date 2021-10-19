@@ -51,8 +51,8 @@ func UnpackMetadata(metadata *messages.Metadata) (string, int, int, int, string)
 	return metadata.GetFileName(), int(metadata.GetFileSize()), int(metadata.GetNumChunks()), int(metadata.GetChunkSize()), metadata.GetCheckSum()
 }
 
-func FindFile(fileName string, context context) (map[string]string, bool) {
-	chunkToNodeMap, exists := context.betterFileIndex[fileName]
+func FindFile(fileName string, context context) ([]*messages.KeyValuePair, bool) {
+	chunkToNodeMap, exists := context.fileToChunkToNodesIndex[fileName]
 	if exists {
 		log.Println("Result: File exists")
 	} else {
@@ -66,9 +66,9 @@ func CalculateNumChunks(metadata *messages.Metadata, context context) {
 	metadata.NumChunks = (metadata.FileSize + metadata.ChunkSize - 1) / metadata.ChunkSize
 }
 
-func GetChunkIndex(metadata *messages.Metadata, context context, chunkIndex map[string]string) []string {
-	//chunkIndex key -> chunkName ... value -> node
+func GetChunkToNodeIndex(metadata *messages.Metadata, context context) []*messages.KeyValuePair {
 	destinationNodes := make([]string, 0)
+	chunkToNodeIndex := make([]*messages.KeyValuePair, 0)
 
 	counter := 1
 	log.Println("NumChunks: " + strconv.Itoa(int(metadata.NumChunks)))
@@ -87,9 +87,10 @@ func GetChunkIndex(metadata *messages.Metadata, context context, chunkIndex map[
 		moddedIndex := i % numNodes
 		node := destinationNodes[moddedIndex]
 		currentChunk := strconv.Itoa(i) + "_" + metadata.FileName
-		chunkIndex[currentChunk] = node
+		//chunkIndex[currentChunk] = node
+		chunkToNodeIndex = append(chunkToNodeIndex, &messages.KeyValuePair{Key: currentChunk, Value: node})
 	}
-	return destinationNodes
+	return chunkToNodeIndex
 }
 
 func GetListing(directory string, context context) string {
@@ -128,13 +129,14 @@ func ValidatePutRequest(metadata *messages.Metadata, context context) validation
 	fileName, fileSize, numChunks, chunkSize, checkSum := UnpackMetadata(metadata)
 	_, exists := FindFile(fileName, context)
 	log.Println("Exists = " + strconv.FormatBool(exists))
-	chunkIndex := make(map[string]string)
-	var nodeList []string
+	//chunkIndex := make(map[string]string)
+	var chunkToNodeIndex []*messages.KeyValuePair
+	//var nodeList []string
 	if !exists {
 		//add to bloom filter
-		nodeList = GetChunkIndex(metadata, context, chunkIndex)
+		chunkToNodeIndex = GetChunkToNodeIndex(metadata, context)
 		log.Println("Adding destination nodes to file index")
-		context.betterFileIndex[fileName] = chunkIndex
+		context.fileToChunkToNodesIndex[fileName] = chunkToNodeIndex
 
 		//adding file to ls directory to support ls client commands
 		file, err := os.OpenFile(context.lsDirectory + fileName, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
@@ -144,36 +146,36 @@ func ValidatePutRequest(metadata *messages.Metadata, context context) validation
 		defer file.Close()
 		metadataBytes := []byte(fileName + "," + strconv.Itoa(fileSize) + "," + strconv.Itoa(numChunks) + "," + strconv.Itoa(chunkSize) + "," + checkSum)
 		log.Println("Added the following destination nodes for filename " + fileName)
-		for chunkName, node := range chunkIndex {
-			log.Println("-> " + chunkName + " " + node)
+		for _, pair := range chunkToNodeIndex {
+			log.Println("-> " + pair.Key + " " + pair.Value)
 		}
 		w := bufio.NewWriter(file)
 		w.Write(metadataBytes)
 		w.Flush()
 	} else {
-		nodeList = make([]string, 0)
+		chunkToNodeIndex = make([]*messages.KeyValuePair, 0)
 	}
-	return validationResult{fileExists: exists, nodeList: nodeList}
+	return validationResult{fileExists: exists, chunkToNodeIndex: chunkToNodeIndex}
 }
 
 func FindChunks(fileName string, context context) locationResult {
 	log.Println("Checking file index for file")
-	chunkToNodeMap, exists := FindFile(fileName, context)
+	chunkToNodeIndex, exists := FindFile(fileName, context)
 	log.Println("Exists = " + strconv.FormatBool(exists))
 
 	if !exists {
 		log.Println("File [" + fileName + "] doesn't exist")
 	} else {
 		log.Println("File [" + fileName + "] located at the following locations:")
-		for chunk, node := range chunkToNodeMap {
-			log.Println(chunk + " @ " + node)
+		for _, pair := range chunkToNodeIndex {
+			log.Println(pair.Key + " @ " + pair.Value)
 		}
 	}
-	return locationResult{fileExists: exists, chunkLocation: chunkToNodeMap}
+	return locationResult{fileExists: exists, chunkToNodeIndex: chunkToNodeIndex}
 }
 
 func PackagePutResponse(validationResult validationResult, metadata *messages.Metadata, context *context) *messages.Wrapper {
-	putResponse := &messages.PutResponse{Available: !validationResult.fileExists, Metadata: metadata, Nodes: validationResult.nodeList}
+	putResponse := &messages.PutResponse{Available: !validationResult.fileExists, Metadata: metadata, ChunkToNodeIndex: validationResult.chunkToNodeIndex}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_PutResponseMessage{PutResponseMessage: putResponse},
 	}
@@ -182,21 +184,7 @@ func PackagePutResponse(validationResult validationResult, metadata *messages.Me
 }
 
 func PackageDeleteResponse(result locationResult) *messages.Wrapper {
-	//chunk node
-	pairs := make([]*messages.KeyValuePair, 0)
-
-	if result.fileExists {
-		for chunk, node := range result.chunkLocation {
-			pair := messages.KeyValuePair{Key: chunk, Value: node}
-			pairs = append(pairs, &pair)
-		}
-		log.Println("Sending response with the following node locations: ")
-		for entry := range pairs {
-			log.Println(pairs[entry].Key + " @ " + pairs[entry].Value)
-		}
-	}
-
-	deleteResponse := &messages.DeleteResponse{Available: result.fileExists, ChunkNodePairs: pairs}
+	deleteResponse := &messages.DeleteResponse{Available: result.fileExists, ChunkNodePairs: result.chunkToNodeIndex}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_DeleteResponseMessage{DeleteResponseMessage: deleteResponse},
 	}
@@ -205,20 +193,7 @@ func PackageDeleteResponse(result locationResult) *messages.Wrapper {
 }
 
 func PackageGetResponse(result locationResult) *messages.Wrapper {
-	pairs := make([]*messages.KeyValuePair, 0)
-
-	if result.fileExists {
-		for chunk, node := range result.chunkLocation {
-			pair := messages.KeyValuePair{Key: chunk, Value: node}
-			pairs = append(pairs, &pair)
-		}
-		log.Println("Sending response with the following node locations: ")
-		for entry := range pairs {
-			log.Println(pairs[entry].Key + " @ " + pairs[entry].Value)
-		}
-	}
-
-	getResponse := &messages.GetResponse{Exists: result.fileExists, ChunkNodePairs: pairs}
+	getResponse := &messages.GetResponse{Exists: result.fileExists, ChunkNodePairs: result.chunkToNodeIndex}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_GetResponseMessage{GetResponseMessage: getResponse},
 	}
@@ -255,7 +230,7 @@ func RegisterNode(msg *messages.Wrapper_RegistrationMessage, context *context) {
 }
 
 func DeleteFileFromIndex(fileName string, context context) {
-	delete(context.betterFileIndex, fileName)
+	delete(context.fileToChunkToNodesIndex, fileName)
 	//delete from ls directory
 	localDirectory := context.lsDirectory + fileName
 	err := os.Remove(localDirectory)
@@ -374,7 +349,7 @@ func InitializeContext() (context, error) {
 		lsDirectory = "/Users/pport/677/ls/"
 	}
 	return context{activeNodes: make(map[string]int),
-		betterFileIndex: make(map[string]map[string]string),
+		fileToChunkToNodesIndex: make(map[string][]*messages.KeyValuePair),
 		bloomFilter: make(map[string]int),
 		chunkSize: chunkSize,
 		lsDirectory: lsDirectory},
@@ -383,26 +358,40 @@ func InitializeContext() (context, error) {
 
 type context struct {
 	activeNodes map[string]int
-	//                   file      chunk    node//
-	betterFileIndex map[string]map[string]string
+	//                                      chunkIndex     //
+	//                                   |---------------| //
+	//                           file      chunk  node     //
+	fileToChunkToNodesIndex map[string][]*messages.KeyValuePair
+	//nodeToChunkIndex
 	bloomFilter map[string]int
 	chunkSize int
 	lsDirectory string
 
 	//what we need
+
+	//bloom filter
+
+	//create a new file everytime a node is registered, just lists the chunks stored there, add to it with every
+	//save, how do we delete from it? could be append only? only read last line, to remove, read last line, remove
+	//one chunk, write new line?
 	//node -> [chunk01, chunk02] (if a node goes down, we know we need to duplicate these chunks
+
+	//fileToChunkToNodesIndex moves to files in ls directory, add lines to file for every chunk (chunk, node, node, node
 	//chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
+
+	//Initiate recovery
+
+	//Node to node passes
 }
 
 type validationResult struct {
 	fileExists bool
-	nodeList []string
+	chunkToNodeIndex []*messages.KeyValuePair
 }
 
 type locationResult struct {
 	fileExists bool
-	//                chunk   node
-	chunkLocation map[string]string
+	chunkToNodeIndex []*messages.KeyValuePair
 }
 
 func main() {
