@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func HandleArgs() (string, string, string, string) {
@@ -60,9 +61,7 @@ func RegisterWithController(context context) error {
 	conn, err := net.Dial("tcp", context.controllerName + ":" + context.controllerPort)
 	if err != nil {
 		log.Fatalln(err.Error())
-		return err
 	}
-	defer conn.Close()
 	log.Println("Connected to controller: " + context.controllerName + ":" + context.controllerPort)
 	registration := &messages.Registration{Node: hostname, Port: context.listeningPort}
 	wrapper := &messages.Wrapper{
@@ -73,6 +72,29 @@ func RegisterWithController(context context) error {
 	log.Println("Node registered with controller")
 	messageHandler.Close()
 	return err
+}
+
+func SendHeartBeats(context context) {
+	for {
+		time.Sleep(5 * time.Second)
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Fatalln()
+		}
+		conn, err := net.Dial("tcp", context.controllerName + ":" + context.controllerPort)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+		log.Println("Connected to controller: " + context.controllerName + ":" + context.controllerPort)
+		heartBeat := &messages.Heartbeat{Node: hostname + ":" + context.listeningPort}
+		wrapper := &messages.Wrapper{
+			Msg: &messages.Wrapper_HeartbeatMessage{HeartbeatMessage: heartBeat},
+		}
+		messageHandler := messages.NewMessageHandler(conn)
+		messageHandler.Send(wrapper)
+		log.Println("Heart beat sent to controller")
+		messageHandler.Close()
+	}
 }
 
 func UnpackMetadata(metadata *messages.Metadata) (string, int, int, int, string) {
@@ -286,6 +308,7 @@ func main() {
 		log.Fatalln(err.Error())
 		return
 	}
+	go SendHeartBeats(context)
 	listener, err := net.Listen("tcp", ":" + context.listeningPort)
 	if err != nil {
 		log.Fatalln(err.Error())

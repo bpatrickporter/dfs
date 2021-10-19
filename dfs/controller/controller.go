@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func IsHostOrion() (string, bool) {
@@ -245,8 +246,8 @@ func PackageInfoResponse(nodes []string, diskSpace string, requestsPerNode []*me
 func RegisterNode(msg *messages.Wrapper_RegistrationMessage, context *context) {
 	node := msg.RegistrationMessage.GetNode()
 	port := msg.RegistrationMessage.GetPort()
-	context.activeNodes[node + ":" + port] = struct{}{}
-	log.Println(node + " registered with controller using port " + port)
+	context.activeNodes[node + ":" + port] = 0
+	log.Println(node + ":" + port + " registered with controller")
 	log.Print("Active nodes: ")
 	for node, port := range context.activeNodes {
 		log.Printf("-> %s:%s \n", node, port)
@@ -262,6 +263,48 @@ func DeleteFileFromIndex(fileName string, context context) {
 		log.Fatalln()
 	}
 	log.Println("Deleted " + fileName + " from file index")
+}
+
+func RecordHeartBeat(node string, context context) {
+	context.activeNodes[node] = context.activeNodes[node] + 1
+	fmt.Println("<3" + node + "<3")
+}
+
+func AnalyzeHeartBeats(context context) {
+	//copy the active nodes map
+	counts := make(map[string]int)
+	for node, heartBeats := range context.activeNodes {
+		counts[node] = heartBeats
+		fmt.Println("Set up: " + node + " = " + strconv.Itoa(heartBeats))
+	}
+
+	for {
+		time.Sleep(10 * time.Second)
+		for node, heartBeats := range context.activeNodes {
+			if count, nodeExists := counts[node]; !nodeExists {
+				//if node on active nodes list isn't in our map, add it
+				counts[node] = heartBeats
+				fmt.Println("Adding " + node + " to heartbeat counter")
+			} else {
+				fmt.Println(node + ": " + "count=" + strconv.Itoa(counts[node]) + " beats=" + strconv.Itoa(heartBeats))
+				if heartBeats == count {
+					//node is down, initiate recovery
+					go InitiateRecovery(node)
+					//remove node from counts and from active nodes
+					delete(counts, node)
+					delete(context.activeNodes, node)
+					fmt.Println("Node " + node + " is offline")
+				} else {
+					//node isn't down, update counts
+					counts[node] = heartBeats
+				}
+			}
+		}
+	}
+}
+
+func InitiateRecovery(node string) {
+	return
 }
 
 func HandleConnection(conn net.Conn, context context) {
@@ -300,7 +343,9 @@ func HandleConnection(conn net.Conn, context context) {
 			wrapper := PackageDeleteResponse(results)
 			messageHandler.Send(wrapper)
 		case *messages.Wrapper_HeartbeatMessage:
-			log.Println("Heartbeat received")
+			node := msg.HeartbeatMessage.Node
+			log.Println("Heartbeat received from " + node)
+			RecordHeartBeat(node, context)
 		case *messages.Wrapper_LsRequest:
 			directory := msg.LsRequest.Directory
 			listing := GetListing(directory, context)
@@ -328,7 +373,7 @@ func InitializeContext() (context, error) {
 	} else {
 		lsDirectory = "/Users/pport/677/ls/"
 	}
-	return context{activeNodes: make(map[string]struct{}),
+	return context{activeNodes: make(map[string]int),
 		betterFileIndex: make(map[string]map[string]string),
 		bloomFilter: make(map[string]int),
 		chunkSize: chunkSize,
@@ -337,7 +382,7 @@ func InitializeContext() (context, error) {
 }
 
 type context struct {
-	activeNodes map[string]struct{}
+	activeNodes map[string]int
 	//                   file      chunk    node//
 	betterFileIndex map[string]map[string]string
 	bloomFilter map[string]int
@@ -372,6 +417,7 @@ func main() {
 		log.Fatalln(err.Error())
 		return
 	}
+	go AnalyzeHeartBeats(context)
 	for {
 		if conn, err := listener.Accept(); err == nil {
 			go HandleConnection(conn, context)
