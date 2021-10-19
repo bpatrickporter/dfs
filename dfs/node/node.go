@@ -309,10 +309,12 @@ func main() {
 		return
 	}
 	go SendHeartBeats(context)
-	listener, err := net.Listen("tcp", ":" + context.listeningPort)
-	if err != nil {
-		log.Fatalln(err.Error())
-		return
+	var listener net.Listener
+	for {
+		if listener, err = net.Listen("tcp", ":" + context.listeningPort); err != nil {
+			log.Println(err.Error())
+			time.Sleep(2 * time.Second)
+		} else { break }
 	}
 	for {
 		if conn, err := listener.Accept(); err == nil {
