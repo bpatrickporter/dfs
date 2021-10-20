@@ -296,10 +296,10 @@ func GetChunks(chunks []string, nodes []string) {
 		messageHandler := messages.NewMessageHandler(conn)
 		messageHandler.Send(wrapper)
 		log.Println("Sent GetCHunk request")
-		//wg.Add(1)
-		HandleConnections(messageHandler, &wg)
+		wg.Add(1)
+		go HandleConnections(messageHandler, &wg)
 	}
-	//wg.Wait()
+	wg.Wait()
 	fmt.Println("File downloaded")
 }
 
@@ -367,7 +367,7 @@ func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.
 
 		switch msg := wrapper.Msg.(type) {
 		case *messages.Wrapper_GetResponseChunkMessage:
-			//defer waitGroup.Done()
+			defer waitGroup.Done()
 			chunkMetadata := msg.GetResponseChunkMessage.ChunkMetadata
 			fileMetadata := msg.GetResponseChunkMessage.Metadata
 			WriteChunk(chunkMetadata, fileMetadata, messageHandler)
