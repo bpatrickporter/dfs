@@ -153,7 +153,6 @@ func PackageGetRequest(fileName string) *messages.Wrapper {
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_GetRequestMessage{GetRequestMessage: &msg},
 	}
-	log.Println("Sending get request")
 	return wrapper
 }
 
@@ -295,11 +294,10 @@ func GetChunks(chunks []string, nodes []string) {
 		}
 		messageHandler := messages.NewMessageHandler(conn)
 		messageHandler.Send(wrapper)
-		log.Println("Sent GetCHunk request")
-		wg.Add(1)
-		go HandleConnections(messageHandler, &wg)
+		//wg.Add(1)
+		HandleConnections(messageHandler, &wg)
 	}
-	wg.Wait()
+	//wg.Wait()
 	fmt.Println("File downloaded")
 }
 
@@ -310,55 +308,49 @@ func GetIndex(chunkName string) (string, string) {
 	return index, fileName
 }
 
-func WriteChunk(metadata *messages.ChunkMetadata, fileMetadata *messages.Metadata, messageHandler *messages.MessageHandler) {
-	log.Println("Chunk: " + metadata.ChunkName + " incoming")
+func WriteChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Metadata, messageHandler *messages.MessageHandler) {
+	log.Println(chunkMetadata.ChunkName + " incoming")
 
-	index, fileName := GetIndex(metadata.ChunkName)
+	index, fileName := GetIndex(chunkMetadata.ChunkName)
 	i, err := strconv.Atoi(index)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
 	file, err := os.OpenFile("copy_" + fileName, os.O_CREATE|os.O_WRONLY, 0666)
+	defer file.Close()
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
 	conn := messageHandler.GetConn()
-
-	buffer := make([]byte, 0)
-	smallBuf := make([]byte, metadata.ChunkSize/10)
-	for {
-		if len(buffer) >= int(metadata.ChunkSize) {
-			break
-		}
-		numBytes, err := conn.Read(smallBuf)
-		log.Println("read " + strconv.Itoa(numBytes) + " bytes")
-		if numBytes < int(metadata.ChunkSize/10) {
-			if err != nil {
-				log.Println(err.Error())
-			}
-			//break
-		}
-		buffer = append(buffer, smallBuf[:numBytes]...)
-	}
-
-	checkSum := messages.GetChunkCheckSum(buffer)
-	oldCheckSum := metadata.ChunkCheckSum
-	log.Println("New Checksum: " + checkSum)
-	log.Println("Old Checksum: " + oldCheckSum)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
-	n, err := file.WriteAt(buffer, int64(i * int(fileMetadata.ChunkSize)))
+	buffer := make([]byte, chunkMetadata.ChunkSize)
+	numBytes, err := io.ReadFull(conn, buffer)
 	if err != nil {
 		log.Println(err.Error())
 	}
-	log.Println("wrote " + strconv.Itoa(n) + " bytes to file")
+	log.Println(chunkMetadata.ChunkName + " read " + strconv.Itoa(numBytes) + " bytes")
+
+	checkSum := messages.GetChunkCheckSum(buffer)
+	oldCheckSum := chunkMetadata.ChunkCheckSum
+	log.Println(chunkMetadata.ChunkName + "New Checksum: " + checkSum)
+	log.Println(chunkMetadata.ChunkName + "Old Checksum: " + oldCheckSum)
+
+	n, err := file.WriteAt(buffer, int64(i * int(fileMetadata.ChunkSize)))
+	log.Println("wrote to offset: " + strconv.Itoa(i * int(fileMetadata.ChunkSize)))
+	log.Println("Index: " + strconv.Itoa(i) + " Chunksize: " + strconv.Itoa(int(fileMetadata.ChunkSize)))
+	if err != nil {
+		log.Println(err.Error())
+	}
+	log.Println(chunkMetadata.ChunkName + "wrote " + strconv.Itoa(n) + " bytes to file")
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
+	f, err := file.Stat()
+	if err != nil {
+		log.Println(err.Error())
+	}
+	log.Println("FileSize: " + strconv.Itoa(int(f.Size())))
 }
 
 func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.WaitGroup) {
@@ -367,7 +359,7 @@ func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.
 
 		switch msg := wrapper.Msg.(type) {
 		case *messages.Wrapper_GetResponseChunkMessage:
-			defer waitGroup.Done()
+			//defer waitGroup.Done()
 			chunkMetadata := msg.GetResponseChunkMessage.ChunkMetadata
 			fileMetadata := msg.GetResponseChunkMessage.Metadata
 			WriteChunk(chunkMetadata, fileMetadata, messageHandler)

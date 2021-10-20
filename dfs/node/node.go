@@ -128,19 +128,20 @@ func PackageMetadata(context context, chunkName string) (*messages.Metadata, *me
 	fileName := slices[0]
 	fileSize, _ := strconv.Atoi(slices[1])
 	numChunks, _ := strconv.Atoi(slices[2])
-	chunkSize, _ := strconv.Atoi(slices[3])
-	checkSum := slices[4]
-	chunkCheckSum := slices[5]
-	metadata := &messages.Metadata{FileName: fileName, FileSize: int32(fileSize), NumChunks: int32(numChunks), ChunkSize: int32(chunkSize), CheckSum: checkSum}
-	chunkMetadata := &messages.ChunkMetadata{ChunkName: chunkName, ChunkSize: int32(chunkSize), ChunkCheckSum: chunkCheckSum}
+	standardChunkSize, _ := strconv.Atoi(slices[3])
+	actualChunkSize, _ := strconv.Atoi(slices[4])
+	checkSum := slices[5]
+	chunkCheckSum := slices[6]
+	metadata := &messages.Metadata{FileName: fileName, FileSize: int32(fileSize), NumChunks: int32(numChunks), ChunkSize: int32(standardChunkSize), CheckSum: checkSum}
+	chunkMetadata := &messages.ChunkMetadata{ChunkName: chunkName, ChunkSize: int32(actualChunkSize), ChunkCheckSum: chunkCheckSum}
+
 	return metadata, chunkMetadata
 }
 
 func WriteMetadataFile(metadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, context context) error {
-	fileName, fileSize, numChunks, _, checkSum := UnpackMetadata(metadata)
-	chunkName, chunkSize, chunkCheckSum := UnpackChunkMetadata(chunkMetadata)
+	fileName, fileSize, numChunks, standardChunkSize, checkSum := UnpackMetadata(metadata)
+	chunkName, actualChunkSize, chunkCheckSum := UnpackChunkMetadata(chunkMetadata)
 
-	log.Println("Trying to create [" + context.rootDir + "meta_" + chunkName + "]")
 	file, err := os.Create(context.rootDir + "meta_"+ chunkName)
 	defer file.Close()
 	if err != nil {
@@ -148,24 +149,17 @@ func WriteMetadataFile(metadata *messages.Metadata, chunkMetadata *messages.Chun
 		log.Println(err.Error())
 		return err
 	}
-	log.Println("Metadata file created for" + chunkName)
 
-	metadataBytes := []byte(fileName + "," + strconv.Itoa(fileSize) + "," + strconv.Itoa(numChunks) + "," + strconv.Itoa(int(chunkSize))+ "," + checkSum + "," + chunkCheckSum)
+	metadataBytes := []byte(fileName + "," + strconv.Itoa(fileSize) + "," + strconv.Itoa(numChunks) + "," + strconv.Itoa(int(standardChunkSize)) + "," + strconv.Itoa(int(actualChunkSize)) + "," + checkSum + "," + chunkCheckSum)
+
 
 	w := bufio.NewWriter(file)
-	//r := bytes.NewReader(metadataBytes)
-	//count, _ := r.Read(metadataBytes)
-	//r2 := bytes.NewReader(metadataBytes)
-	//bs, err:= io.CopyN(w, r2, int64(count))
 	w.Write(metadataBytes)
 	w.Flush()
-	fmt.Println("Wrote metadata")
 	return err
 }
 
 func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, messageHandler *messages.MessageHandler, context context) error {
-	log.Println("Put request received for")
-	log.Println("-> " + fileMetadata.String())
 
 	conn := messageHandler.GetConn()
 	chunkName, _, _ := UnpackChunkMetadata(chunkMetadata)
@@ -174,7 +168,6 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 		log.Fatalln(err.Error())
 	}
 
-	log.Println("Trying to create [" + context.rootDir + chunkName + "]")
 	file, err := os.Create(context.rootDir + chunkName)
 	defer file.Close()
 	if err != nil {
@@ -182,29 +175,28 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 		log.Println(err.Error())
 		return err
 	}
-	log.Println("Chunk file created for " + chunkName)
+	log.Println(chunkName)
+
 	writer := bufio.NewWriter(file)
 
-	buffer := make([]byte, 0)
-	smallBuf := make([]byte, chunkMetadata.ChunkSize/10)
-	for {
-		if len(buffer) >= int(chunkMetadata.ChunkSize) {
-			break
-		}
-		numBytes, err := conn.Read(smallBuf)
-		if numBytes < int(chunkMetadata.ChunkSize/10) {
-			if err != nil {
-				log.Println(err.Error())
-			}
-			//break
-		}
-		buffer = append(buffer, smallBuf[:numBytes]...)
+	buffer := make([]byte, chunkMetadata.ChunkSize)
+	numBytes, err := io.ReadFull(conn, buffer)
+	if err != nil {
+		log.Println(err.Error())
 	}
+	log.Println(chunkMetadata.ChunkName + " read " + strconv.Itoa(numBytes) + " bytes")
+
+	checkSum := messages.GetChunkCheckSum(buffer)
+	oldCheckSum := chunkMetadata.ChunkCheckSum
+	log.Println(chunkMetadata.ChunkName + " New Checksum: " + checkSum)
+	log.Println(chunkMetadata.ChunkName + " Old Checksum: " + oldCheckSum)
 
 	reader := bytes.NewReader(buffer)
-	_, err = io.Copy(writer, reader)
-	log.Println("read " + strconv.Itoa(len(buffer)) + " bytes")
-	log.Println("File chunk complete")
+	n, err := io.CopyN(writer, reader, int64(chunkMetadata.ChunkSize))
+	if err != nil {
+		log.Println(err.Error())
+	}
+	log.Println(chunkMetadata.ChunkName + "Wrote " + strconv.Itoa(int(n)) + " bytes")
 	return err
 }
 
@@ -246,7 +238,7 @@ func DeleteChunk(chunkName string, context context) {
 }
 
 func SendChunk(chunkName string, context context, messageHandler *messages.MessageHandler) {
-	log.Println("Get chunk message received for " + chunkName)
+	log.Println(chunkName)
 	file, err := os.Open(context.rootDir + chunkName)
 	if err != nil {
 		log.Fatalln(err.Error())
@@ -259,14 +251,12 @@ func SendChunk(chunkName string, context context, messageHandler *messages.Messa
 		Msg: &messages.Wrapper_GetResponseChunkMessage{GetResponseChunkMessage: message},
 	}
 	messageHandler.Send(wrapper)
-	log.Println("Get response chunk message sent")
 	writer := bufio.NewWriter(messageHandler.GetConn())
 	bytes, err := io.Copy(writer, file)
 	log.Println("Sent " + strconv.Itoa(int(bytes)) + " bytes")
 }
 
 func HandleConnection(conn net.Conn, context context) {
-	log.Println("Accepted a connection from " + conn.RemoteAddr().String())
 	messageHandler := messages.NewMessageHandler(conn)
 	for {
 		request, _ := messageHandler.Receive()
@@ -276,7 +266,7 @@ func HandleConnection(conn net.Conn, context context) {
 			chunkMetadata := msg.PutRequestMessage.ChunkMetadata
 			WriteChunk(metadata, chunkMetadata, messageHandler, context)
 			//results := VerifyCheckSumsMatch(metadata, context)
-			VerifyCheckSumsMatch(chunkMetadata, context)
+			//VerifyCheckSumsMatch(chunkMetadata, context)
 			//SendAck(results, messageHandler)
 			messageHandler.Close()
 			return
