@@ -439,7 +439,7 @@ func main() {
 		log.Fatalln(err.Error())
 		return
 	}
-	go AnalyzeHeartBeats(context)
+	//go AnalyzeHeartBeats(context)
 	for {
 		if conn, err := listener.Accept(); err == nil {
 			go HandleConnection(conn, context)

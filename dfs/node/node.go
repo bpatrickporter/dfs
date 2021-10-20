@@ -137,7 +137,7 @@ func PackageMetadata(context context, chunkName string) (*messages.Metadata, *me
 }
 
 func WriteMetadataFile(metadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, context context) error {
-	fileName, fileSize, numChunks, chunkSize, checkSum := UnpackMetadata(metadata)
+	fileName, fileSize, numChunks, _, checkSum := UnpackMetadata(metadata)
 	chunkName, chunkSize, chunkCheckSum := UnpackChunkMetadata(chunkMetadata)
 
 	log.Println("Trying to create [" + context.rootDir + "meta_" + chunkName + "]")
@@ -163,18 +163,17 @@ func WriteMetadataFile(metadata *messages.Metadata, chunkMetadata *messages.Chun
 	return err
 }
 
-func WriteChunk(metadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, messageHandler *messages.MessageHandler, context context) error {
+func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, messageHandler *messages.MessageHandler, context context) error {
 	log.Println("Put request received for")
-	log.Println("-> " + metadata.String())
+	log.Println("-> " + fileMetadata.String())
 
 	conn := messageHandler.GetConn()
-	chunkName, chunkSize, _ := UnpackChunkMetadata(chunkMetadata)
-	err := WriteMetadataFile(metadata, chunkMetadata, context)
+	chunkName, _, _ := UnpackChunkMetadata(chunkMetadata)
+	err := WriteMetadataFile(fileMetadata, chunkMetadata, context)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 
-	//create file for chunk
 	log.Println("Trying to create [" + context.rootDir + chunkName + "]")
 	file, err := os.Create(context.rootDir + chunkName)
 	defer file.Close()
@@ -184,25 +183,27 @@ func WriteChunk(metadata *messages.Metadata, chunkMetadata *messages.ChunkMetada
 		return err
 	}
 	log.Println("Chunk file created for " + chunkName)
-
-	buffer := make([]byte, chunkSize)
 	writer := bufio.NewWriter(file)
 
-	log.Println("Preparing to write chunk")
-	numBytes, err := conn.Read(buffer)
-	log.Println("Read from conn: " + strconv.Itoa(numBytes))
-	if err != nil {
-		fmt.Println(err.Error())
+	buffer := make([]byte, 0)
+	smallBuf := make([]byte, chunkMetadata.ChunkSize/10)
+	for {
+		if len(buffer) >= int(chunkMetadata.ChunkSize) {
+			break
+		}
+		numBytes, err := conn.Read(smallBuf)
+		if numBytes < int(chunkMetadata.ChunkSize/10) {
+			if err != nil {
+				log.Println(err.Error())
+			}
+			break
+		}
+		buffer = append(buffer, smallBuf[:numBytes]...)
 	}
-	reader := bytes.NewReader(buffer)
 
-	log.Println("read bytes into buffer")
-	_, err = io.CopyN(writer, reader, int64(numBytes))
-	log.Println("Copied buffer to writer")
-	if err != nil {
-		fmt.Println(err.Error())
-		return err
-	}
+	reader := bytes.NewReader(buffer)
+	_, err = io.Copy(writer, reader)
+	log.Println("read " + strconv.Itoa(len(buffer)) + " bytes")
 	log.Println("File chunk complete")
 	return err
 }
@@ -277,12 +278,18 @@ func HandleConnection(conn net.Conn, context context) {
 			//results := VerifyCheckSumsMatch(metadata, context)
 			VerifyCheckSumsMatch(chunkMetadata, context)
 			//SendAck(results, messageHandler)
+			messageHandler.Close()
+			return
 		case *messages.Wrapper_DeleteRequestMessage:
 			chunkName := msg.DeleteRequestMessage.FileName
 			DeleteChunk(chunkName, context)
+			messageHandler.Close()
+			return
 		case *messages.Wrapper_GetRequestMessage:
 			chunkName := msg.GetRequestMessage.FileName
 			SendChunk(chunkName, context, messageHandler)
+			messageHandler.Close()
+			return
 		case nil:
 			log.Println("Received an empty message, terminating client")
 			messageHandler.Close()
@@ -313,7 +320,7 @@ func main() {
 		log.Fatalln(err.Error())
 		return
 	}
-	go SendHeartBeats(context)
+	//go SendHeartBeats(context)
 
 	listener, err := net.Listen("tcp", ":" + context.listeningPort)
 	if err != nil {
