@@ -196,7 +196,7 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 			if err != nil {
 				log.Println(err.Error())
 			}
-			break
+			//break
 		}
 		buffer = append(buffer, smallBuf[:numBytes]...)
 	}

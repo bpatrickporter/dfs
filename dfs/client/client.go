@@ -143,9 +143,8 @@ func PackagePutRequestChunk(currentChunk string, metadata *messages.Metadata, ch
 		Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
 	}
 	log.Println("Packaging chunk: " + currentChunk)
-	log.Println("Metadata: " + msg.Metadata.String())
-	log.Println("ChunkMetadata: " + msg.ChunkMetadata.String())
-	log.Println("Wrapper: " + wrapper.String())
+	log.Println("Metadata: " + strconv.Itoa(int(msg.Metadata.ChunkSize)))
+	log.Println("ChunkMetadata: " + strconv.Itoa(int(msg.ChunkMetadata.ChunkSize)))
 	return wrapper
 }
 
@@ -333,15 +332,13 @@ func WriteChunk(metadata *messages.ChunkMetadata, fileMetadata *messages.Metadat
 		if len(buffer) >= int(metadata.ChunkSize) {
 			break
 		}
-		log.Println("reading into smallBuf")
 		numBytes, err := conn.Read(smallBuf)
 		log.Println("read " + strconv.Itoa(numBytes) + " bytes")
 		if numBytes < int(metadata.ChunkSize/10) {
 			if err != nil {
 				log.Println(err.Error())
 			}
-			log.Println("breaking")
-			break
+			//break
 		}
 		buffer = append(buffer, smallBuf[:numBytes]...)
 	}
