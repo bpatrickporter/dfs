@@ -23,6 +23,7 @@ message Ack {
 message PutRequest {
     Metadata metadata = 1;
     ChunkMetadata chunk_metadata = 2;
+    repeated string forwarding_list = 3;
 }
 
 message PutResponse {
@@ -37,7 +38,6 @@ message GetRequest {
 
 message GetResponse {
     bool exists = 1;
-    ///repeated KeyValuePair chunk_node_pairs = 2;
     repeated string chunks = 2;
     repeated string nodes = 3;
 }
@@ -54,7 +54,11 @@ message DeleteRequest {
 message DeleteResponse {
     bool available = 1;
     repeated string chunks = 2;
-    repeated string nodes = 3;
+    repeated ListOfStrings nodeLists = 3;
+}
+
+message ListOfStrings {
+    repeated string strings = 1;
 }
 
 message Registration {

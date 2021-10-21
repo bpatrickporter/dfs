@@ -81,20 +81,20 @@ func UnpackPutResponse(msg *messages.Wrapper_PutResponseMessage) (bool, []string
 	return available, nodes, metadata
 }
 
-func UnpackDeleteResponse(msg *messages.Wrapper_DeleteResponseMessage) (bool, []string, []string){
+func UnpackDeleteResponse(msg *messages.Wrapper_DeleteResponseMessage) (bool, []string, []*messages.ListOfStrings){
 	fileExists := msg.DeleteResponseMessage.Available
 	//chunkLocations := msg.DeleteResponseMessage.ChunkNodePairs
 	chunks := msg.DeleteResponseMessage.Chunks
-	nodes := msg.DeleteResponseMessage.Nodes
+	nodeLists := msg.DeleteResponseMessage.NodeLists
 	log.Println("Delete Response message received")
 	log.Println("File exists: " + strconv.FormatBool(fileExists))
 	for i := range chunks {
-		log.Println(chunks[i] + " @ " + nodes[i])
+		log.Println(chunks[i] + " @ " + nodeLists[i].String())
 	}
 	if !fileExists {
 		fmt.Println("File doesn't exist")
 	}
-	return fileExists, chunks, nodes
+	return fileExists, chunks, nodeLists
 }
 
 func UnpackGetResponse(msg *messages.Wrapper_GetResponseMessage) (bool, []string, []string) {
@@ -134,11 +134,11 @@ func PackageDeleteRequest(fileName string) *messages.Wrapper {
 	return wrapper
 }
 
-func PackagePutRequestChunk(currentChunk string, metadata *messages.Metadata, chunkCheckSum string, numBytes int) *messages.Wrapper {
+func PackagePutRequestChunk(currentChunk string, metadata *messages.Metadata, chunkCheckSum string, numBytes int, forwardingList []string) *messages.Wrapper {
 	fileMetadata := metadata
 	chunkMetadata := &messages.ChunkMetadata{ChunkName: currentChunk, ChunkSize: int32(numBytes), ChunkCheckSum: chunkCheckSum}
 
-	msg := messages.PutRequest{Metadata: fileMetadata, ChunkMetadata: chunkMetadata}
+	msg := messages.PutRequest{Metadata: fileMetadata, ChunkMetadata: chunkMetadata, ForwardingList: forwardingList}
 	wrapper := &messages.Wrapper{
 		Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
 	}
@@ -177,20 +177,30 @@ func GetParam(message string) string {
 	}
 }
 
-func GetChunkIndex(metadata *messages.Metadata, destinationNodes []string) map[string]string {
+func GetChunkIndex(metadata *messages.Metadata, destinationNodes []string) map[string][]string {
 	//LogMetadata(metadata)
 
-	chunkIndex := make(map[string]string)
+	chunkToNodeListIndex := make(map[string][]string)
 	for i := 0; i < int(metadata.NumChunks); i++ {
 		moddedIndex := i % len(destinationNodes)
 		node := destinationNodes[moddedIndex]
 		currentChunkName := strconv.Itoa(i) + "_" + metadata.FileName
-		chunkIndex[currentChunkName] = node
+		chunkToNodeListIndex[currentChunkName] = []string{node}
+		//add back up nodes
+		forwardListIndex1 := (i + 1) % len(destinationNodes)
+		forwardListIndex2 := (i + 2) % len(destinationNodes)
+		forwardNode1 := destinationNodes[forwardListIndex1]
+		forwardNode2 := destinationNodes[forwardListIndex2]
+		chunkToNodeListIndex[currentChunkName] = append(chunkToNodeListIndex[currentChunkName], forwardNode1)
+		chunkToNodeListIndex[currentChunkName] = append(chunkToNodeListIndex[currentChunkName], forwardNode2)
 	}
-	for chunk, node:= range chunkIndex {
-		log.Println("-> " + chunk + " " + node)
+	for chunk, nodeList := range chunkToNodeListIndex {
+		log.Print("-> " + chunk + " ")
+		for i := range nodeList {
+			log.Print(nodeList[i] + " ")
+		}
 	}
-	return chunkIndex
+	return chunkToNodeListIndex
 }
 
 func LogFileTransferStatus(status bool) {
@@ -215,24 +225,29 @@ func LogFileAlreadyExists() {
 	log.Println("File already exists")
 }
 
-func DeleteChunks(chunks []string, nodes []string) {
+func DeleteChunks(chunks []string, nodeLists []*messages.ListOfStrings) {
 	for i := range chunks {
 		chunk := chunks[i]
-		node := nodes[i]
-		wrapper := PackageDeleteRequest(chunk)
-		conn, err := net.Dial("tcp", node)
-		if err != nil {
-			log.Fatalln(err.Error())
+		nodeList := nodeLists[i]
+		for j := range nodeList.Strings {
+			wrapper := PackageDeleteRequest(chunk)
+			for {
+				if conn, err := net.Dial("tcp", nodeList.Strings[j]); err != nil {
+					log.Println("Trying connection again to " + nodeList.Strings[j])
+				} else {
+					messageHandler := messages.NewMessageHandler(conn)
+					messageHandler.Send(wrapper)
+					log.Println("Delete chunk request sent")
+					messageHandler.Close()
+					break
+				}
+			}
 		}
-		messageHandler := messages.NewMessageHandler(conn)
-		messageHandler.Send(wrapper)
-		log.Println("Delete chunk request sent")
-		messageHandler.Close()
 	}
 }
 
 func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
-	chunkIndex := GetChunkIndex(metadata, destinationNodes)
+	chunkToNodeListIndex := GetChunkIndex(metadata, destinationNodes)
 
 	f, err := os.Open(metadata.FileName)
 	if err != nil {
@@ -251,13 +266,13 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 			break
 		}
 		currentChunk := strconv.Itoa(counter) + "_" + metadata.FileName
-		wrapper := PackagePutRequestChunk(currentChunk, metadata, checkSum, numBytes)
-		node := chunkIndex[currentChunk]
+		nodeList := chunkToNodeListIndex[currentChunk]
+		wrapper := PackagePutRequestChunk(currentChunk, metadata, checkSum, numBytes, nodeList[1:])
 
 		var conn net.Conn
 		for {
-			if conn, err = net.Dial("tcp", node); err != nil {
-				log.Println("trying conn again" + node)
+			if conn, err = net.Dial("tcp", nodeList[0]); err != nil {
+				log.Println("trying conn again" + nodeList[0])
 				time.Sleep(1000 * time.Millisecond)
 			} else {
 				break
@@ -294,10 +309,10 @@ func GetChunks(chunks []string, nodes []string) {
 		}
 		messageHandler := messages.NewMessageHandler(conn)
 		messageHandler.Send(wrapper)
-		//wg.Add(1)
-		HandleConnections(messageHandler, &wg)
+		wg.Add(1)
+		go HandleConnections(messageHandler, &wg)
 	}
-	//wg.Wait()
+	wg.Wait()
 	fmt.Println("File downloaded")
 }
 
@@ -359,7 +374,7 @@ func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.
 
 		switch msg := wrapper.Msg.(type) {
 		case *messages.Wrapper_GetResponseChunkMessage:
-			//defer waitGroup.Done()
+			defer waitGroup.Done()
 			chunkMetadata := msg.GetResponseChunkMessage.ChunkMetadata
 			fileMetadata := msg.GetResponseChunkMessage.Metadata
 			WriteChunk(chunkMetadata, fileMetadata, messageHandler)

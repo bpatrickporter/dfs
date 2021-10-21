@@ -2,7 +2,7 @@
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 log_dir="${script_dir}/logs"
-chunk_size=200000
+chunk_size=15000000
 controller_port=8989
 node_port=8988
 root_dir="/bigdata/bpporter/p1-file-system/"
