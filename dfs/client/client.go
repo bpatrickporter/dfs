@@ -231,17 +231,22 @@ func DeleteChunks(chunks []string, nodeLists []*messages.ListOfStrings) {
 		nodeList := nodeLists[i]
 		for j := range nodeList.Strings {
 			wrapper := PackageDeleteRequest(chunk)
-			for {
-				if conn, err := net.Dial("tcp", nodeList.Strings[j]); err != nil {
-					log.Println("Trying connection again to " + nodeList.Strings[j])
-				} else {
-					messageHandler := messages.NewMessageHandler(conn)
-					messageHandler.Send(wrapper)
-					log.Println("Delete chunk request sent")
-					messageHandler.Close()
-					break
-				}
-			}
+			node := nodeList.Strings[j]
+			go DeleteChunk(node, wrapper)
+		}
+	}
+}
+
+func DeleteChunk(node string, wrapper *messages.Wrapper) {
+	for {
+		if conn, err := net.Dial("tcp", node); err != nil {
+			log.Println("Trying connection again to " + node)
+		} else {
+			messageHandler := messages.NewMessageHandler(conn)
+			messageHandler.Send(wrapper)
+			log.Println("Delete chunk request sent")
+			messageHandler.Close()
+			break
 		}
 	}
 }
@@ -258,16 +263,14 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 	counter := 0
 	for {
 		numBytes, err := f.Read(buffer)
-		//newBuffer := make([]byte, numBytes)
-		newBuffer := buffer[:numBytes]
-		checkSum := messages.GetChunkCheckSum(newBuffer)
-		reader := bytes.NewReader(newBuffer)
+		checkSum := messages.GetChunkCheckSum(buffer)
+		reader := bytes.NewReader(buffer)
 		if err != nil {
 			break
 		}
 		currentChunk := strconv.Itoa(counter) + "_" + metadata.FileName
 		nodeList := chunkToNodeListIndex[currentChunk]
-		wrapper := PackagePutRequestChunk(currentChunk, metadata, checkSum, numBytes, nodeList[1:])
+		wrapper := PackagePutRequestChunk(currentChunk, metadata, checkSum, numBytes, nodeList)
 
 		var conn net.Conn
 		for {
@@ -289,7 +292,6 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 		}
 		log.Printf("%d bytes sent\n", numBytes)
 		counter++
-		//instead of waiting for ack we'll simplify this for now and close the connection
 		messageHandler.Close()
 	}
 	fmt.Println("File saved")

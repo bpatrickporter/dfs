@@ -413,14 +413,14 @@ type context struct {
 	chunkSize int
 	lsDirectory string
 
-	//what we need
-	//[DONE] node -> [chunk01, chunk02] (if a node goes down, we know we need to duplicate these chunks
-	//[    ]chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
+	//TODO
+	//[   ]Node to node passes
+	//[   ]chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
+	//[   ]Initiate recovery
 
-	//what we need
-
-	//[    ]bloom filter
-
+	//[   ]Deny service if active nodes < 3
+	//[   ]bloom filter
+	//[   in memory file index
 	//create a new file everytime a node is registered, just lists the chunks stored there, add to it with every
 	//save, how do we delete from it? could be append only? only read last line, to remove, read last line, remove
 	//one chunk, write new line?
@@ -429,10 +429,6 @@ type context struct {
 	//fileToChunkToNodesIndex moves to files in ls directory, add lines to file for every chunk (chunk, node, node, node
 	//chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
 
-	//[   ]Initiate recovery
-
-	//[   ]Node to node passes
-	//[   ]Deny service if active nodes < 3
 }
 
 type validationResult struct {
@@ -442,7 +438,7 @@ type validationResult struct {
 
 type locationResult struct {
 	fileExists bool
-	//                chunk   nodes
+	//                chunk   nodes //
 	chunkLocation map[string][]string
 }
 

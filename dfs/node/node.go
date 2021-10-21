@@ -159,8 +159,7 @@ func WriteMetadataFile(metadata *messages.Metadata, chunkMetadata *messages.Chun
 	return err
 }
 
-func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, messageHandler *messages.MessageHandler, context context) error {
-
+func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, messageHandler *messages.MessageHandler, context context) {
 	conn := messageHandler.GetConn()
 	chunkName, _, _ := UnpackChunkMetadata(chunkMetadata)
 	err := WriteMetadataFile(fileMetadata, chunkMetadata, context)
@@ -173,7 +172,6 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 	if err != nil {
 		fmt.Println(err.Error())
 		log.Println(err.Error())
-		return err
 	}
 	log.Println(chunkName)
 
@@ -197,7 +195,6 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 		log.Println(err.Error())
 	}
 	log.Println(chunkMetadata.ChunkName + "Wrote " + strconv.Itoa(int(n)) + " bytes")
-	return err
 }
 
 func VerifyCheckSumsMatch(metadata *messages.ChunkMetadata, context context) bool {
@@ -256,6 +253,62 @@ func SendChunk(chunkName string, context context, messageHandler *messages.Messa
 	log.Println("Sent " + strconv.Itoa(int(bytes)) + " bytes")
 }
 
+func ForwardChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMetadata, forwardingList []string, context context) {
+	var nextUp string
+	if len(forwardingList) == 0 {
+		return
+	} else if len(forwardingList) == 1 {
+		nextUp = forwardingList[0]
+		forwardingList = make([]string, 0)
+	} else {
+		nextUp = forwardingList[0]
+		forwardingList = forwardingList[1:]
+	}
+	wrapper := PackagePutRequestChunk(chunkMetadata, fileMetadata, forwardingList)
+	file, err := os.Open(context.rootDir + chunkMetadata.ChunkName)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	defer file.Close()
+
+	f, _ := file.Stat()
+	log.Println("FileSize: " + strconv.Itoa(int(f.Size())))
+	buffer := make([]byte, chunkMetadata.ChunkSize)
+	_, err = file.Read(buffer)
+	if err != nil {
+		log.Fatalln()
+	}
+	reader := bytes.NewReader(buffer)
+
+	var conn net.Conn
+	for {
+		if conn, err = net.Dial("tcp", nextUp); err != nil {
+			log.Println("trying conn again " + nextUp)
+			time.Sleep(1000 * time.Millisecond)
+		} else {
+			messageHandler := messages.NewMessageHandler(conn)
+			messageHandler.Send(wrapper)
+			writer := bufio.NewWriter(conn)
+			n, err := io.CopyN(writer, reader, int64(chunkMetadata.ChunkSize))
+			log.Println("Forwarding " + strconv.Itoa(int(n)) + "/" + strconv.Itoa(int(chunkMetadata.ChunkSize)))
+			if err != nil {
+				fmt.Print(err.Error())
+			}
+			messageHandler.Close()
+			break
+		}
+	}
+
+}
+
+func PackagePutRequestChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Metadata, forwardingList []string) *messages.Wrapper {
+	msg := messages.PutRequest{Metadata: fileMetadata, ChunkMetadata: chunkMetadata, ForwardingList: forwardingList}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
+	}
+	return wrapper
+}
+
 func HandleConnection(conn net.Conn, context context) {
 	messageHandler := messages.NewMessageHandler(conn)
 	for {
@@ -264,10 +317,12 @@ func HandleConnection(conn net.Conn, context context) {
 		case *messages.Wrapper_PutRequestMessage:
 			metadata := msg.PutRequestMessage.Metadata
 			chunkMetadata := msg.PutRequestMessage.ChunkMetadata
+			forwardingList := msg.PutRequestMessage.ForwardingList
 			WriteChunk(metadata, chunkMetadata, messageHandler, context)
 			//results := VerifyCheckSumsMatch(metadata, context)
 			//VerifyCheckSumsMatch(chunkMetadata, context)
 			//SendAck(results, messageHandler)
+			ForwardChunk(metadata, chunkMetadata,forwardingList, context)
 			messageHandler.Close()
 			return
 		case *messages.Wrapper_DeleteRequestMessage:
