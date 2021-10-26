@@ -432,7 +432,9 @@ func FindReceiver(nodeList []string, activeNodes map[string]int) (string, bool) 
 
 func FindSender(node string, nodeList []string) (string, bool) {
 	for i := range nodeList {
+		log.Println("FIND SENDER: " + nodeList[i] + " vs " + node)
 		if nodeList[i] != node {
+			log.Println("RETURNING SENDER AS " + nodeList[i])
 			return nodeList[i], true
 		}
 	}
@@ -440,6 +442,8 @@ func FindSender(node string, nodeList []string) (string, bool) {
 }
 
 func HandleConnection(conn net.Conn, context context) {
+	*context.goRoutines = *context.goRoutines + 1
+	log.Println("GoRoutines: " + strconv.Itoa(*context.goRoutines))
 	messageHandler := messages.NewMessageHandler(conn)
 	for {
 		request, _ := messageHandler.Receive()
@@ -447,6 +451,8 @@ func HandleConnection(conn net.Conn, context context) {
 		case *messages.Wrapper_RegistrationMessage:
 			RegisterNode(msg, &context)
 			messageHandler.Close()
+			log.Println("hi")
+			(*context.goRoutines)--
 			return
 		case *messages.Wrapper_PutRequestMessage:
 			metadata := msg.PutRequestMessage.GetMetadata()
@@ -477,6 +483,8 @@ func HandleConnection(conn net.Conn, context context) {
 			node := msg.HeartbeatMessage.Node
 			RecordHeartBeat(node, context)
 			messageHandler.Close()
+			log.Println("<3")
+			(*context.goRoutines)--
 			return
 		case *messages.Wrapper_LsRequest:
 			directory := msg.LsRequest.Directory
@@ -498,14 +506,18 @@ func HandleConnection(conn net.Conn, context context) {
 			nodeMessageHandler.Send(wrapper)
 			nodeMessageHandler.Close()
 			messageHandler.Close()
+			log.Println("Sending recovery instructions")
+			log.Println(sender +  " > " + node + " : " + chunk) 
 			return
 		case nil:
-			messageHandler.Close()
-			return
+			//messageHandler.Close()
+	
 		default:
+			log.Println("default")
 			continue
 		}
 	}
+	log.Println("exiting handle connection")
 }
 
 func InitializeContext() (context, error) {
@@ -516,12 +528,14 @@ func InitializeContext() (context, error) {
 	} else {
 		lsDirectory = "/Users/pport/677/ls/"
 	}
+	goRoutines := 1
 	return context{activeNodes: make(map[string]int),
 		nodeToChunksIndex: make(map[string][]string),
 		fileToChunkToNodesIndex: make(map[string]map[string][]string),
 		bloomFilter: make(map[string]int),
 		chunkSize: chunkSize,
-		lsDirectory: lsDirectory},
+		lsDirectory: lsDirectory,
+		goRoutines: &goRoutines},
 		err
 }
 
@@ -532,6 +546,7 @@ type context struct {
 	bloomFilter map[string]int
 	chunkSize int
 	lsDirectory string
+	goRoutines *int
 
 	//TODO - for grading rubric
 	//[   ]On-disk file index and in-memory Bloom filter implementation

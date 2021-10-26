@@ -321,7 +321,7 @@ func GetChunks(chunks []string, nodes []string, context context) {
 		messageHandler := messages.NewMessageHandler(conn)
 		messageHandler.Send(wrapper)
 		wg.Add(1)
-		go HandleConnections(messageHandler, &wg, context)
+		go HandleConnections(messageHandler, &wg, context, node)
 	}
 	wg.Wait()
 	fmt.Println("File downloaded")
@@ -394,7 +394,7 @@ func InitiateCorruptFileRecovery(chunk string, node string, context context) {
 	messageHandler.Close()
 }
 
-func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.WaitGroup, context context) {
+func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.WaitGroup, context context, node string) {
 	for {
 		wrapper, _ := messageHandler.Receive()
 
@@ -404,7 +404,7 @@ func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.
 			chunkMetadata := msg.GetResponseChunkMessage.ChunkMetadata
 			fileMetadata := msg.GetResponseChunkMessage.Metadata
 			if fileCorrupted := WriteChunk(chunkMetadata, fileMetadata, messageHandler); fileCorrupted {
-				InitiateCorruptFileRecovery(chunkMetadata.ChunkName, messageHandler.GetRemote(), context)
+				InitiateCorruptFileRecovery(chunkMetadata.ChunkName, node, context)
 			}
 			messageHandler.Close()
 			return

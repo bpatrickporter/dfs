@@ -173,7 +173,7 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 		fmt.Println(err.Error())
 		log.Println(err.Error())
 	}
-	log.Println(chunkName)
+	log.Println("writiing " + chunkName)
 
 	writer := bufio.NewWriter(file)
 	buffer := make([]byte, chunkMetadata.ChunkSize)
@@ -181,9 +181,9 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 	if err != nil {
 		log.Println(err.Error())
 	}
-	log.Println(chunkMetadata.ChunkName + " read " + strconv.Itoa(numBytes) + " bytes")
+	log.Println(chunkMetadata.ChunkName + " read " + strconv.Itoa(numBytes) + " bytes from connection")
 
-	log.Println("ChunkSize" + strconv.Itoa(int(chunkMetadata.ChunkSize)))
+	log.Println(chunkMetadata.ChunkName + "expecting chunkSize of" + strconv.Itoa(int(chunkMetadata.ChunkSize)))
 	checkSum := messages.GetChunkCheckSum(buffer[:chunkMetadata.ChunkSize])
 	oldCheckSum := chunkMetadata.ChunkCheckSum
 	log.Println(chunkMetadata.ChunkName + " New Checksum: " + checkSum)
@@ -194,7 +194,7 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 	if err != nil {
 		log.Println(err.Error())
 	}
-	log.Println(chunkMetadata.ChunkName + "Wrote " + strconv.Itoa(int(n)) + " bytes")
+	log.Println(chunkMetadata.ChunkName + " wrote " + strconv.Itoa(int(n)) + " bytes to file")
 }
 
 func VerifyCheckSumsMatch(metadata *messages.ChunkMetadata, context context) bool {
@@ -247,13 +247,14 @@ func SendChunk(chunkName string, context context, messageHandler *messages.Messa
 	metadata, chunkMetadata := PackageMetadata(context, chunkName)
 	var wrapper *messages.Wrapper
 	if sendingToStorageNode {
+		log.Println("Sending chunks to other storage node")
 		wrapper = PackagePutRequestChunk(chunkMetadata, metadata, make([]string, 0))
 	} else {
 		wrapper = PackageGetResponseChunk(chunkMetadata, metadata)
 	}
 	messageHandler.Send(wrapper)
 	writer := bufio.NewWriter(messageHandler.GetConn())
-	bytes, err := io.Copy(writer, file)
+	bytes, err := io.CopyN(writer, file, int64(chunkMetadata.ChunkSize))
 	log.Println("Sent " + strconv.Itoa(int(bytes)) + " bytes")
 }
 
@@ -348,8 +349,10 @@ func HandleConnection(conn net.Conn, context context) {
 			messageHandler.Close()
 			return
 		case *messages.Wrapper_RecoveryInstructionMessage:
+			log.Println("Received recovery instruction message")
 			receiver := msg.RecoveryInstructionMessage.Receiver
 			chunkName := msg.RecoveryInstructionMessage.Chunk
+			log.Println(receiver +  ":" + chunkName)
 			nodeMessageHandler := messages.EstablishConnection(receiver)
 			SendChunk(chunkName, context, nodeMessageHandler, true)
 			nodeMessageHandler.Close()
