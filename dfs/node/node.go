@@ -370,7 +370,6 @@ func HandleConnection(conn net.Conn, context context) {
 			messageHandler.Close()
 			return
 		case nil:
-			log.Println("Received an empty message, terminating client")
 			messageHandler.Close()
 			return
 		default:

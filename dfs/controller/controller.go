@@ -92,6 +92,7 @@ func GetChunkToNodesIndex(metadata *messages.Metadata, context context, chunkToN
 	for i := 0; i < int(metadata.NumChunks); i++ {
 		moddedIndex := i % numNodes
 		node := destinationNodes[moddedIndex]
+		//add to context.chunkToNodeIndex
 		currentChunk := strconv.Itoa(i) + "_" + metadata.FileName
 		chunkToNodeIndex[currentChunk] = []string{node}
 		//add back up nodes
@@ -101,6 +102,10 @@ func GetChunkToNodesIndex(metadata *messages.Metadata, context context, chunkToN
 		forwardNode2 := destinationNodes[forwardListIndex2]
 		chunkToNodeIndex[currentChunk] = append(chunkToNodeIndex[currentChunk], forwardNode1)
 		chunkToNodeIndex[currentChunk] = append(chunkToNodeIndex[currentChunk], forwardNode2)
+		//add to context.NodeToChunkIndex
+		context.nodeToChunksIndex[node] = append(context.nodeToChunksIndex[node], node)
+		context.nodeToChunksIndex[forwardNode1] = append(context.nodeToChunksIndex[forwardNode1], node)
+		context.nodeToChunksIndex[forwardNode2] = append(context.nodeToChunksIndex[forwardNode2], node)
 	}
 	for chunk, nodeList := range chunkToNodeIndex {
 		log.Print("-> " + chunk + " ")
@@ -300,7 +305,7 @@ func DeleteFileFromIndexes(fileName string, context context) {
 
 func RecordHeartBeat(node string, context context) {
 	context.activeNodes[node] = context.activeNodes[node] + 1
-	fmt.Println("<3" + node + "<3")
+	log.Println("<3" + node + "<3")
 }
 
 func AnalyzeHeartBeats(context context) {
@@ -308,7 +313,7 @@ func AnalyzeHeartBeats(context context) {
 	counts := make(map[string]int)
 	for node, heartBeats := range context.activeNodes {
 		counts[node] = heartBeats
-		fmt.Println("Set up: " + node + " = " + strconv.Itoa(heartBeats))
+		log.Println("Set up: " + node + " = " + strconv.Itoa(heartBeats))
 	}
 
 	for {
@@ -324,7 +329,6 @@ func AnalyzeHeartBeats(context context) {
 					//node is down, initiate recovery
 					go InitiateRecovery(node, context)
 					//remove node from counts and from active nodes
-					log.Println("Recovery Initiated")
 					delete(counts, node)
 					delete(context.activeNodes, node)
 					fmt.Println("Node " + node + " is offline")
@@ -347,7 +351,10 @@ func PackageRecoveryInstruction(receiver string, chunk string) *messages.Wrapper
 
 func InitiateRecovery(node string, context context) {
 	//find out what chunks the node had
+	log.Println("Recovery Initiated")
 	chunkList := context.nodeToChunksIndex[node]
+	log.Println("Chunks to be copied: ")
+
 	for i := range chunkList {
 		chunk := chunkList[i]
 		_, fileName := GetIndexAndFileName(chunk)
@@ -430,7 +437,6 @@ func FindSender(node string, nodeList []string) (string, bool) {
 }
 
 func HandleConnection(conn net.Conn, context context) {
-	log.Println("Accepted a connection from " + conn.RemoteAddr().String())
 	messageHandler := messages.NewMessageHandler(conn)
 	for {
 		request, _ := messageHandler.Receive()
@@ -466,7 +472,6 @@ func HandleConnection(conn net.Conn, context context) {
 			messageHandler.Send(wrapper)
 		case *messages.Wrapper_HeartbeatMessage:
 			node := msg.HeartbeatMessage.Node
-			log.Println("Heartbeat received from " + node)
 			RecordHeartBeat(node, context)
 		case *messages.Wrapper_LsRequest:
 			directory := msg.LsRequest.Directory
@@ -478,7 +483,6 @@ func HandleConnection(conn net.Conn, context context) {
 			wrapper := PackageInfoResponse(nodeList, diskSpace, requestsPerNode)
 			messageHandler.Send(wrapper)
 		case nil:
-			fmt.Println("Received an empty message, terminating connection.")
 			messageHandler.Close()
 			return
 		default:
