@@ -27,6 +27,13 @@ func IsHostOrion() (string, bool) {
 	return shortHostName, isOrion
 }
 
+func GetIndexAndFileName(chunkName string) (string, string) {
+	splitIndex := strings.Index(chunkName, "_")
+	index := chunkName[0:splitIndex]
+	fileName := chunkName[splitIndex + 1:]
+	return index, fileName
+}
+
 func InitializeLogger() {
 
 	var file *os.File
@@ -52,7 +59,7 @@ func UnpackMetadata(metadata *messages.Metadata) (string, int, int, int, string)
 }
 
 func FindFile(fileName string, context context) (map[string][]string, bool) {
-	chunkToNodeMap, exists := context.betterFileIndex[fileName]
+	chunkToNodeMap, exists := context.fileToChunkToNodesIndex[fileName]
 	if exists {
 		log.Println("Result: File exists")
 	} else {
@@ -66,7 +73,7 @@ func CalculateNumChunks(metadata *messages.Metadata, context context) {
 	metadata.NumChunks = (metadata.FileSize + metadata.ChunkSize - 1) / metadata.ChunkSize
 }
 
-func GetChunkIndex(metadata *messages.Metadata, context context, chunkToNodeIndex map[string][]string) []string {
+func GetChunkToNodesIndex(metadata *messages.Metadata, context context, chunkToNodeIndex map[string][]string) []string {
 	destinationNodes := make([]string, 0)
 
 	counter := 1
@@ -140,13 +147,13 @@ func ValidatePutRequest(metadata *messages.Metadata, context context) validation
 	fileName, fileSize, numChunks, chunkSize, checkSum := UnpackMetadata(metadata)
 	_, exists := FindFile(fileName, context)
 	log.Println("Exists = " + strconv.FormatBool(exists))
-	chunkIndex := make(map[string][]string)
+	chunkToNodesIndex := make(map[string][]string)
 	var nodeList []string
 	if !exists {
 		//add to bloom filter
-		nodeList = GetChunkIndex(metadata, context, chunkIndex)
+		nodeList = GetChunkToNodesIndex(metadata, context, chunkToNodesIndex)
 		log.Println("Adding destination nodes to file index")
-		context.betterFileIndex[fileName] = chunkIndex
+		context.fileToChunkToNodesIndex[fileName] = chunkToNodesIndex
 
 		//adding file to ls directory to support ls client commands
 		file, err := os.OpenFile(context.lsDirectory + fileName, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
@@ -155,11 +162,12 @@ func ValidatePutRequest(metadata *messages.Metadata, context context) validation
 		}
 		defer file.Close()
 		metadataBytes := []byte(fileName + "," + strconv.Itoa(fileSize) + "," + strconv.Itoa(numChunks) + "," + strconv.Itoa(chunkSize) + "," + checkSum)
-		log.Println("Added the following destination nodes for filename " + fileName)
-		for chunkName, nodes := range chunkIndex {
-			log.Println("-> " + chunkName)
-			for node := range nodes {
-				log.Println("--> " + nodes[node])
+
+		log.Println("Current status of nodeToChunksIndex")
+		for node, chunkList := range context.nodeToChunksIndex {
+			log.Println(node)
+			for i := range chunkList {
+				log.Println("->" + chunkList[i])
 			}
 		}
 		w := bufio.NewWriter(file)
@@ -271,6 +279,7 @@ func RegisterNode(msg *messages.Wrapper_RegistrationMessage, context *context) {
 	node := msg.RegistrationMessage.GetNode()
 	port := msg.RegistrationMessage.GetPort()
 	context.activeNodes[node + ":" + port] = 0
+	context.nodeToChunksIndex[node + ":" + port] = make([]string, 0)
 	log.Println(node + ":" + port + " registered with controller")
 	log.Print("Active nodes: ")
 	for node, port := range context.activeNodes {
@@ -278,8 +287,8 @@ func RegisterNode(msg *messages.Wrapper_RegistrationMessage, context *context) {
 	}
 }
 
-func DeleteFileFromIndex(fileName string, context context) {
-	delete(context.betterFileIndex, fileName)
+func DeleteFileFromIndexes(fileName string, context context) {
+	delete(context.fileToChunkToNodesIndex, fileName)
 	//delete from ls directory
 	localDirectory := context.lsDirectory + fileName
 	err := os.Remove(localDirectory)
@@ -313,8 +322,9 @@ func AnalyzeHeartBeats(context context) {
 				fmt.Println(node + ": " + "count=" + strconv.Itoa(counts[node]) + " beats=" + strconv.Itoa(heartBeats))
 				if heartBeats == count {
 					//node is down, initiate recovery
-					go InitiateRecovery(node)
+					go InitiateRecovery(node, context)
 					//remove node from counts and from active nodes
+					log.Println("Recovery Initiated")
 					delete(counts, node)
 					delete(context.activeNodes, node)
 					fmt.Println("Node " + node + " is offline")
@@ -327,8 +337,96 @@ func AnalyzeHeartBeats(context context) {
 	}
 }
 
-func InitiateRecovery(node string) {
+func PackageRecoveryInstruction(receiver string, chunk string) *messages.Wrapper {
+	msg := messages.RecoveryInstruction{Receiver: receiver, Chunk: chunk}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_RecoveryInstructionMessage{RecoveryInstructionMessage: &msg},
+	}
+	return wrapper
+}
+
+func InitiateRecovery(node string, context context) {
+	//find out what chunks the node had
+	chunkList := context.nodeToChunksIndex[node]
+	for i := range chunkList {
+		chunk := chunkList[i]
+		_, fileName := GetIndexAndFileName(chunk)
+		chunkToNodeIndex := context.fileToChunkToNodesIndex[fileName]
+		//where is this chunk?
+		nodeList := chunkToNodeIndex[chunk]
+		//pick a node that has the chunk but isn't the downed node
+		sender, found := FindSender(node, nodeList)
+		if !found {
+			log.Println("Recovery aborted: no sender node found for " + chunk)
+			break
+		}
+		//pick a node that doesn't have the chunk
+		receiver, found := FindReceiver(nodeList, context.activeNodes)
+		if !found {
+			log.Println("Recovery aborted: no receiver node found for " + chunk)
+			break
+		}
+		log.Println("Recovery: " + sender + " > " + receiver + " : " + chunkList[i])
+		wrapper := PackageRecoveryInstruction(receiver, chunk)
+		//sender sends put request to receiver
+
+		var conn net.Conn
+		var err error
+		for {
+			if conn, err = net.Dial("tcp", sender); err != nil {
+				log.Println("trying conn again" + sender)
+				time.Sleep(1000 * time.Millisecond)
+			} else {
+				fmt.Print(err.Error())
+				break
+			}
+		}
+		messageHandler := messages.NewMessageHandler(conn)
+		messageHandler.Send(wrapper)
+		messageHandler.Close()
+
+		UpdateIndexes(context, receiver, chunk)
+	}
+	delete(context.nodeToChunksIndex, node)
+	log.Println("Recovery Complete")
 	return
+}
+
+func UpdateIndexes(context context, receiver string, chunk string) {
+	chunkList := context.nodeToChunksIndex[receiver]
+	chunkList = append(chunkList, chunk)
+	context.nodeToChunksIndex[receiver] = chunkList //redundant?
+
+	_, fileName := GetIndexAndFileName(chunk)
+	chunkToNodeIndex := context.fileToChunkToNodesIndex[fileName]
+	nodeList := chunkToNodeIndex[chunk]
+	nodeList = append(nodeList, receiver)
+	chunkToNodeIndex[chunk] = nodeList //redundant?
+}
+
+func FindReceiver(nodeList []string, activeNodes map[string]int) (string, bool) {
+	var foundReceiver bool
+	for node, _ := range activeNodes {
+		foundReceiver = true
+		for j := range nodeList {
+			if node == nodeList[j] {
+				foundReceiver = false
+			}
+		}
+		if foundReceiver {
+			return node, foundReceiver
+		}
+	}
+	return "", foundReceiver
+}
+
+func FindSender(node string, nodeList []string) (string, bool) {
+	for i := range nodeList {
+		if nodeList[i] != node {
+			return nodeList[i], true
+		}
+	}
+	return "", false
 }
 
 func HandleConnection(conn net.Conn, context context) {
@@ -362,7 +460,7 @@ func HandleConnection(conn net.Conn, context context) {
 			fileName := msg.DeleteRequestMessage.FileName
 			results := FindChunks(fileName, context)
 			if results.fileExists {
-				DeleteFileFromIndex(fileName, context)
+				DeleteFileFromIndexes(fileName, context)
 			}
 			wrapper := PackageDeleteResponse(results)
 			messageHandler.Send(wrapper)
@@ -380,7 +478,7 @@ func HandleConnection(conn net.Conn, context context) {
 			wrapper := PackageInfoResponse(nodeList, diskSpace, requestsPerNode)
 			messageHandler.Send(wrapper)
 		case nil:
-			fmt.Println("Received an empty message, termination connection.")
+			fmt.Println("Received an empty message, terminating connection.")
 			messageHandler.Close()
 			return
 		default:
@@ -398,7 +496,8 @@ func InitializeContext() (context, error) {
 		lsDirectory = "/Users/pport/677/ls/"
 	}
 	return context{activeNodes: make(map[string]int),
-		betterFileIndex: make(map[string]map[string][]string),
+		nodeToChunksIndex: make(map[string][]string),
+		fileToChunkToNodesIndex: make(map[string]map[string][]string),
 		bloomFilter: make(map[string]int),
 		chunkSize: chunkSize,
 		lsDirectory: lsDirectory},
@@ -407,27 +506,27 @@ func InitializeContext() (context, error) {
 
 type context struct {
 	activeNodes map[string]int
-	//                   file      chunk    nodes//
-	betterFileIndex map[string]map[string][]string
+	nodeToChunksIndex map[string][]string
+	fileToChunkToNodesIndex map[string]map[string][]string
 	bloomFilter map[string]int
 	chunkSize int
 	lsDirectory string
 
 	//TODO
-	//[   ]Node to node passes
-	//[   ]chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
 	//[   ]Initiate recovery
-
 	//[   ]Deny service if active nodes < 3
 	//[   ]bloom filter
-	//[   in memory file index
-	//create a new file everytime a node is registered, just lists the chunks stored there, add to it with every
-	//save, how do we delete from it? could be append only? only read last line, to remove, read last line, remove
-	//one chunk, write new line?
-	//node -> [chunk01, chunk02] (if a node goes down, we know we need to duplicate these chunks
 
-	//fileToChunkToNodesIndex moves to files in ls directory, add lines to file for every chunk (chunk, node, node, node
+	//TODO - in memory file/node indexes
+	//[   ] move to disk
+	//node -> [chunk01, chunk02] (if a node goes down, we know we need to duplicate these chunks
+	//nodeToChunksIndex
+
+	//[   ] move to disk
 	//chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
+	//fileToChunkToNodesIndex moves to files in ls directory, add lines to file for every chunk (chunk, node, node, node
+
+	//[   ] deleting chunks from nodeToChunks index
 
 }
 
@@ -454,7 +553,7 @@ func main() {
 		log.Fatalln(err.Error())
 		return
 	}
-	//go AnalyzeHeartBeats(context)
+	go AnalyzeHeartBeats(context)
 	for {
 		if conn, err := listener.Accept(); err == nil {
 			go HandleConnection(conn, context)

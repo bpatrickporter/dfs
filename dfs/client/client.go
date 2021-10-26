@@ -318,7 +318,7 @@ func GetChunks(chunks []string, nodes []string) {
 	fmt.Println("File downloaded")
 }
 
-func GetIndex(chunkName string) (string, string) {
+func GetIndexAndFileName(chunkName string) (string, string) {
 	splitIndex := strings.Index(chunkName, "_")
 	index := chunkName[0:splitIndex]
 	fileName := chunkName[splitIndex + 1:]
@@ -328,7 +328,7 @@ func GetIndex(chunkName string) (string, string) {
 func WriteChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Metadata, messageHandler *messages.MessageHandler) {
 	log.Println(chunkMetadata.ChunkName + " incoming")
 
-	index, fileName := GetIndex(chunkMetadata.ChunkName)
+	index, fileName := GetIndexAndFileName(chunkMetadata.ChunkName)
 	i, err := strconv.Atoi(index)
 	if err != nil {
 		log.Fatalln(err.Error())

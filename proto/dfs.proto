@@ -93,6 +93,11 @@ message InfoResponse {
     repeated KeyValuePair requests_per_node = 3;
 }
 
+message RecoveryInstruction {
+    string receiver = 1;
+    string chunk = 2;
+}
+
 message Wrapper {
     oneof msg {
         Ack acknowledge_message = 1;
@@ -109,5 +114,6 @@ message Wrapper {
         LSResponse ls_response = 12;
         InfoRequest info_request = 13;
         InfoResponse info_response = 14;
+        RecoveryInstruction recovery_instruction_message = 15;
     }
 }

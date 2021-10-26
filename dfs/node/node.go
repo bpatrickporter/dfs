@@ -225,16 +225,18 @@ func DeleteChunk(chunkName string, context context) {
 	log.Println("Delete chunk request received for " + chunkName)
 	err := os.Remove(context.rootDir + chunkName)
 	if err != nil {
-		log.Fatalln(err.Error())
+		log.Println(err.Error())
 	}
 	err = os.Remove(context.rootDir + "meta_" + chunkName)
 	if err != nil {
-		log.Fatalln(err.Error())
+		log.Println(err.Error())
 	}
-	log.Println("File deleted")
+	if err == nil {
+		log.Println("File deleted")
+	}
 }
 
-func SendChunk(chunkName string, context context, messageHandler *messages.MessageHandler) {
+func SendChunk(chunkName string, context context, messageHandler *messages.MessageHandler, sendingToStorageNode bool) {
 	log.Println(chunkName)
 	file, err := os.Open(context.rootDir + chunkName)
 	if err != nil {
@@ -243,9 +245,11 @@ func SendChunk(chunkName string, context context, messageHandler *messages.Messa
 	defer file.Close()
 
 	metadata, chunkMetadata := PackageMetadata(context, chunkName)
-	message := &messages.GetResponseChunk{ChunkMetadata: chunkMetadata, Metadata: metadata}
-	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_GetResponseChunkMessage{GetResponseChunkMessage: message},
+	var wrapper *messages.Wrapper
+	if sendingToStorageNode {
+		wrapper = PackagePutRequestChunk(chunkMetadata, metadata, make([]string, 0))
+	} else {
+		wrapper = PackageGetResponseChunk(chunkMetadata, metadata)
 	}
 	messageHandler.Send(wrapper)
 	writer := bufio.NewWriter(messageHandler.GetConn())
@@ -309,6 +313,28 @@ func PackagePutRequestChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata 
 	return wrapper
 }
 
+func PackageGetResponseChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Metadata) *messages.Wrapper {
+	message := &messages.GetResponseChunk{ChunkMetadata: chunkMetadata, Metadata: fileMetadata}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_GetResponseChunkMessage{GetResponseChunkMessage: message},
+	}
+	return wrapper
+}
+
+func EstablishConnection(receiver string) *messages.MessageHandler {
+	var conn net.Conn
+	var err error
+	for {
+		if conn, err = net.Dial("tcp", receiver); err != nil {
+			log.Println("trying conn again" + receiver)
+			time.Sleep(1000 * time.Millisecond)
+		} else {
+			break
+		}
+	}
+	return messages.NewMessageHandler(conn)
+}
+
 func HandleConnection(conn net.Conn, context context) {
 	messageHandler := messages.NewMessageHandler(conn)
 	for {
@@ -332,7 +358,15 @@ func HandleConnection(conn net.Conn, context context) {
 			return
 		case *messages.Wrapper_GetRequestMessage:
 			chunkName := msg.GetRequestMessage.FileName
-			SendChunk(chunkName, context, messageHandler)
+			SendChunk(chunkName, context, messageHandler, false)
+			messageHandler.Close()
+			return
+		case *messages.Wrapper_RecoveryInstructionMessage:
+			receiver := msg.RecoveryInstructionMessage.Receiver
+			chunkName := msg.RecoveryInstructionMessage.Chunk
+			nodeMessageHandler := EstablishConnection(receiver)
+			SendChunk(chunkName, context, nodeMessageHandler, true)
+			nodeMessageHandler.Close()
 			messageHandler.Close()
 			return
 		case nil:
@@ -365,7 +399,7 @@ func main() {
 		log.Fatalln(err.Error())
 		return
 	}
-	//go SendHeartBeats(context)
+	go SendHeartBeats(context)
 
 	listener, err := net.Listen("tcp", ":" + context.listeningPort)
 	if err != nil {
