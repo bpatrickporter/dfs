@@ -103,9 +103,9 @@ func GetChunkToNodesIndex(metadata *messages.Metadata, context context, chunkToN
 		chunkToNodeIndex[currentChunk] = append(chunkToNodeIndex[currentChunk], forwardNode1)
 		chunkToNodeIndex[currentChunk] = append(chunkToNodeIndex[currentChunk], forwardNode2)
 		//add to context.NodeToChunkIndex
-		context.nodeToChunksIndex[node] = append(context.nodeToChunksIndex[node], node)
-		context.nodeToChunksIndex[forwardNode1] = append(context.nodeToChunksIndex[forwardNode1], node)
-		context.nodeToChunksIndex[forwardNode2] = append(context.nodeToChunksIndex[forwardNode2], node)
+		context.nodeToChunksIndex[node] = append(context.nodeToChunksIndex[node], currentChunk)
+		context.nodeToChunksIndex[forwardNode1] = append(context.nodeToChunksIndex[forwardNode1], currentChunk)
+		context.nodeToChunksIndex[forwardNode2] = append(context.nodeToChunksIndex[forwardNode2], currentChunk)
 	}
 	for chunk, nodeList := range chunkToNodeIndex {
 		log.Print("-> " + chunk + " ")
@@ -322,16 +322,16 @@ func AnalyzeHeartBeats(context context) {
 			if count, nodeExists := counts[node]; !nodeExists {
 				//if node on active nodes list isn't in our map, add it
 				counts[node] = heartBeats
-				fmt.Println("Adding " + node + " to heartbeat counter")
+				log.Println("Adding " + node + " to heartbeat counter")
 			} else {
-				fmt.Println(node + ": " + "count=" + strconv.Itoa(counts[node]) + " beats=" + strconv.Itoa(heartBeats))
+				log.Println(node + ": " + "count=" + strconv.Itoa(counts[node]) + " beats=" + strconv.Itoa(heartBeats))
 				if heartBeats == count {
 					//node is down, initiate recovery
 					go InitiateRecovery(node, context)
 					//remove node from counts and from active nodes
 					delete(counts, node)
 					delete(context.activeNodes, node)
-					fmt.Println("Node " + node + " is offline")
+					log.Println("Node " + node + " is offline")
 				} else {
 					//node isn't down, update counts
 					counts[node] = heartBeats
