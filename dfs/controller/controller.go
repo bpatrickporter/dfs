@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"dfs/messages"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -351,9 +350,12 @@ func PackageRecoveryInstruction(receiver string, chunk string) *messages.Wrapper
 
 func InitiateRecovery(node string, context context) {
 	//find out what chunks the node had
-	log.Println("Recovery Initiated")
+	log.Println("Recovery Initiated for " + node)
 	chunkList := context.nodeToChunksIndex[node]
 	log.Println("Chunks to be copied: ")
+	for i := range chunkList {
+		log.Println(">" + chunkList[i])
+	}
 
 	for i := range chunkList {
 		chunk := chunkList[i]
@@ -384,7 +386,6 @@ func InitiateRecovery(node string, context context) {
 				log.Println("trying conn again" + sender)
 				time.Sleep(1000 * time.Millisecond)
 			} else {
-				fmt.Print(err.Error())
 				break
 			}
 		}
@@ -473,6 +474,8 @@ func HandleConnection(conn net.Conn, context context) {
 		case *messages.Wrapper_HeartbeatMessage:
 			node := msg.HeartbeatMessage.Node
 			RecordHeartBeat(node, context)
+			messageHandler.Close()
+			return
 		case *messages.Wrapper_LsRequest:
 			directory := msg.LsRequest.Directory
 			listing := GetListing(directory, context)
