@@ -49,6 +49,11 @@ func (m *MessageHandler) GetConn() net.Conn {
 	return m.conn
 }
 
+func (m *MessageHandler) GetRemote() string {
+	address := m.conn.RemoteAddr().String()
+	return address
+}
+
 func (m *MessageHandler) Close() {
 	m.conn.Close()
 }

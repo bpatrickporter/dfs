@@ -139,6 +139,8 @@ func GetInfo(context context) ([]string, string, []*messages.KeyValuePair) {
 	var nodes []string
 	for node, _ := range context.activeNodes {
 		nodes = append(nodes, node)
+
+
 	}
 	diskSpace := "100 TB"
 	requests := []*messages.KeyValuePair{{Key: "orion01", Value: "4"}, {Key: "orion02", Value: "5"}}
@@ -485,6 +487,18 @@ func HandleConnection(conn net.Conn, context context) {
 			nodeList, diskSpace, requestsPerNode := GetInfo(context)
 			wrapper := PackageInfoResponse(nodeList, diskSpace, requestsPerNode)
 			messageHandler.Send(wrapper)
+		case *messages.Wrapper_CorruptFileNoticeMessage:
+			node := msg.CorruptFileNoticeMessage.Node
+			chunk := msg.CorruptFileNoticeMessage.Chunk
+			_, fileName := GetIndexAndFileName(chunk)
+			chunkToNodesIndex := context.fileToChunkToNodesIndex[fileName]
+			sender, _ := FindSender(node, chunkToNodesIndex[chunk])
+			nodeMessageHandler := messages.EstablishConnection(sender)
+			wrapper := PackageRecoveryInstruction(node, chunk)
+			nodeMessageHandler.Send(wrapper)
+			nodeMessageHandler.Close()
+			messageHandler.Close()
+			return
 		case nil:
 			messageHandler.Close()
 			return
@@ -519,12 +533,11 @@ type context struct {
 	chunkSize int
 	lsDirectory string
 
-	//TODO
-	//[   ]Initiate recovery
-	//[   ]Deny service if active nodes < 3
-	//[   ]bloom filter
+	//TODO - for grading rubric
+	//[   ]On-disk file index and in-memory Bloom filter implementation
+	//[   ]Viewing the node list, available disk space, and requests per node.
 
-	//TODO - in memory file/node indexes
+	//TODO - details
 	//[   ] move to disk
 	//node -> [chunk01, chunk02] (if a node goes down, we know we need to duplicate these chunks
 	//nodeToChunksIndex
@@ -533,7 +546,9 @@ type context struct {
 	//chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
 	//fileToChunkToNodesIndex moves to files in ls directory, add lines to file for every chunk (chunk, node, node, node
 
-	//[   ] deleting chunks from nodeToChunks index
+	//TODO - not on rubric
+	//[   ] deleting chunks from nodeToChunks index <- a problem for another day
+	//[   ] deny service if active nodes < 3
 
 }
 

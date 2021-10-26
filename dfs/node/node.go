@@ -167,7 +167,7 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 		log.Fatalln(err.Error())
 	}
 
-	file, err := os.Create(context.rootDir + chunkName)
+	file, err := os.OpenFile(context.rootDir + chunkName, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
 	defer file.Close()
 	if err != nil {
 		fmt.Println(err.Error())
@@ -176,7 +176,6 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 	log.Println(chunkName)
 
 	writer := bufio.NewWriter(file)
-
 	buffer := make([]byte, chunkMetadata.ChunkSize)
 	numBytes, err := io.ReadFull(conn, buffer)
 	if err != nil {
@@ -184,7 +183,8 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 	}
 	log.Println(chunkMetadata.ChunkName + " read " + strconv.Itoa(numBytes) + " bytes")
 
-	checkSum := messages.GetChunkCheckSum(buffer)
+	log.Println("ChunkSize" + strconv.Itoa(int(chunkMetadata.ChunkSize)))
+	checkSum := messages.GetChunkCheckSum(buffer[:chunkMetadata.ChunkSize])
 	oldCheckSum := chunkMetadata.ChunkCheckSum
 	log.Println(chunkMetadata.ChunkName + " New Checksum: " + checkSum)
 	log.Println(chunkMetadata.ChunkName + " Old Checksum: " + oldCheckSum)
@@ -321,20 +321,6 @@ func PackageGetResponseChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata
 	return wrapper
 }
 
-func EstablishConnection(receiver string) *messages.MessageHandler {
-	var conn net.Conn
-	var err error
-	for {
-		if conn, err = net.Dial("tcp", receiver); err != nil {
-			log.Println("trying conn again" + receiver)
-			time.Sleep(1000 * time.Millisecond)
-		} else {
-			break
-		}
-	}
-	return messages.NewMessageHandler(conn)
-}
-
 func HandleConnection(conn net.Conn, context context) {
 	messageHandler := messages.NewMessageHandler(conn)
 	for {
@@ -348,7 +334,7 @@ func HandleConnection(conn net.Conn, context context) {
 			//results := VerifyCheckSumsMatch(metadata, context)
 			//VerifyCheckSumsMatch(chunkMetadata, context)
 			//SendAck(results, messageHandler)
-			ForwardChunk(metadata, chunkMetadata,forwardingList, context)
+			ForwardChunk(metadata, chunkMetadata, forwardingList, context)
 			messageHandler.Close()
 			return
 		case *messages.Wrapper_DeleteRequestMessage:
@@ -364,7 +350,7 @@ func HandleConnection(conn net.Conn, context context) {
 		case *messages.Wrapper_RecoveryInstructionMessage:
 			receiver := msg.RecoveryInstructionMessage.Receiver
 			chunkName := msg.RecoveryInstructionMessage.Chunk
-			nodeMessageHandler := EstablishConnection(receiver)
+			nodeMessageHandler := messages.EstablishConnection(receiver)
 			SendChunk(chunkName, context, nodeMessageHandler, true)
 			nodeMessageHandler.Close()
 			messageHandler.Close()

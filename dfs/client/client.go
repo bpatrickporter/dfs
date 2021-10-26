@@ -156,6 +156,15 @@ func PackageGetRequest(fileName string) *messages.Wrapper {
 	return wrapper
 }
 
+func PackageCorruptFileNotice(node string, chunk string) *messages.Wrapper {
+	msg := messages.CorruptFileNotice{Node: node, Chunk: chunk}
+	wrapper := &messages.Wrapper{
+		Msg: &messages.Wrapper_CorruptFileNoticeMessage{CorruptFileNoticeMessage: &msg},
+	}
+	log.Println("Sending corrupt file notice")
+	return wrapper
+}
+
 func PrintInfoResponse(response *messages.InfoResponse) {
 	fmt.Println("Active Nodes")
 	for node := range response.Nodes {
@@ -263,7 +272,7 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 	counter := 0
 	for {
 		numBytes, err := f.Read(buffer)
-		checkSum := messages.GetChunkCheckSum(buffer)
+		checkSum := messages.GetChunkCheckSum(buffer[:numBytes])
 		reader := bytes.NewReader(buffer)
 		if err != nil {
 			break
@@ -297,7 +306,7 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 	fmt.Println("File saved")
 }
 
-func GetChunks(chunks []string, nodes []string) {
+func GetChunks(chunks []string, nodes []string, context context) {
 	log.Println("Going to get chunks")
 	var wg sync.WaitGroup
 
@@ -312,7 +321,7 @@ func GetChunks(chunks []string, nodes []string) {
 		messageHandler := messages.NewMessageHandler(conn)
 		messageHandler.Send(wrapper)
 		wg.Add(1)
-		go HandleConnections(messageHandler, &wg)
+		go HandleConnections(messageHandler, &wg, context)
 	}
 	wg.Wait()
 	fmt.Println("File downloaded")
@@ -325,7 +334,7 @@ func GetIndexAndFileName(chunkName string) (string, string) {
 	return index, fileName
 }
 
-func WriteChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Metadata, messageHandler *messages.MessageHandler) {
+func WriteChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Metadata, messageHandler *messages.MessageHandler) bool {
 	log.Println(chunkMetadata.ChunkName + " incoming")
 
 	index, fileName := GetIndexAndFileName(chunkMetadata.ChunkName)
@@ -348,14 +357,20 @@ func WriteChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Me
 	}
 	log.Println(chunkMetadata.ChunkName + " read " + strconv.Itoa(numBytes) + " bytes")
 
-	checkSum := messages.GetChunkCheckSum(buffer)
+	checkSum := messages.GetChunkCheckSum(buffer[:chunkMetadata.ChunkSize])
 	oldCheckSum := chunkMetadata.ChunkCheckSum
 	log.Println(chunkMetadata.ChunkName + "New Checksum: " + checkSum)
 	log.Println(chunkMetadata.ChunkName + "Old Checksum: " + oldCheckSum)
+	var corruptedFile bool
+	if strings.Compare(checkSum, oldCheckSum) != 0 {
+		corruptedFile = true
+	} else {
+		corruptedFile = false
+	}
 
 	n, err := file.WriteAt(buffer, int64(i * int(fileMetadata.ChunkSize)))
-	log.Println("wrote to offset: " + strconv.Itoa(i * int(fileMetadata.ChunkSize)))
-	log.Println("Index: " + strconv.Itoa(i) + " Chunksize: " + strconv.Itoa(int(fileMetadata.ChunkSize)))
+	//log.Println("wrote to offset: " + strconv.Itoa(i * int(fileMetadata.ChunkSize)))
+	//log.Println("Index: " + strconv.Itoa(i) + " Chunksize: " + strconv.Itoa(int(fileMetadata.ChunkSize)))
 	if err != nil {
 		log.Println(err.Error())
 	}
@@ -368,9 +383,18 @@ func WriteChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Me
 		log.Println(err.Error())
 	}
 	log.Println("FileSize: " + strconv.Itoa(int(f.Size())))
+	return corruptedFile
 }
 
-func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.WaitGroup) {
+func InitiateCorruptFileRecovery(chunk string, node string, context context) {
+	fmt.Println("Downloaded file was corrupt. Corrupt file recovery process initiated. Try download again.")
+	messageHandler := messages.EstablishConnection(context.controllerName + ":" + context.controllerPort)
+	wrapper := PackageCorruptFileNotice(node, chunk)
+	messageHandler.Send(wrapper)
+	messageHandler.Close()
+}
+
+func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.WaitGroup, context context) {
 	for {
 		wrapper, _ := messageHandler.Receive()
 
@@ -379,7 +403,9 @@ func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.
 			defer waitGroup.Done()
 			chunkMetadata := msg.GetResponseChunkMessage.ChunkMetadata
 			fileMetadata := msg.GetResponseChunkMessage.Metadata
-			WriteChunk(chunkMetadata, fileMetadata, messageHandler)
+			if fileCorrupted := WriteChunk(chunkMetadata, fileMetadata, messageHandler); fileCorrupted {
+				InitiateCorruptFileRecovery(chunkMetadata.ChunkName, messageHandler.GetRemote(), context)
+			}
 			messageHandler.Close()
 			return
 		default:
@@ -388,7 +414,7 @@ func HandleConnections(messageHandler *messages.MessageHandler, waitGroup *sync.
 	}
 }
 
-func HandleConnection(messageHandler *messages.MessageHandler) {
+func HandleConnection(messageHandler *messages.MessageHandler, context context) {
 	for {
 		wrapper, _ := messageHandler.Receive()
 
@@ -410,7 +436,7 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 		case *messages.Wrapper_GetResponseMessage:
 			fileExists, chunks, nodes := UnpackGetResponse(msg)
 			if fileExists {
-				GetChunks(chunks, nodes)
+				GetChunks(chunks, nodes, context)
 			}
 			return
 		case *messages.Wrapper_DeleteResponseMessage:
@@ -432,7 +458,7 @@ func HandleConnection(messageHandler *messages.MessageHandler) {
 	}
 }
 
-func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
+func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn, context context) {
 	message := scanner.Text()
 	if len(message) != 0 {
 		var wrapper *messages.Wrapper
@@ -442,17 +468,17 @@ func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
 			fileName := GetParam(message)
 			wrapper = PackagePutRequest(fileName)
 			controllerMessageHandler.Send(wrapper)
-			HandleConnection(controllerMessageHandler)
+			HandleConnection(controllerMessageHandler, context)
 		} else if strings.HasPrefix(message, "get") {
 			fileName := GetParam(message)
 			wrapper = PackageGetRequest(fileName)
 			controllerMessageHandler.Send(wrapper)
-			HandleConnection(controllerMessageHandler)
+			HandleConnection(controllerMessageHandler, context)
 		} else if strings.HasPrefix(message, "delete") {
 			fileName := GetParam(message)
 			wrapper = PackageDeleteRequest(fileName)
 			controllerMessageHandler.Send(wrapper)
-			HandleConnection(controllerMessageHandler)
+			HandleConnection(controllerMessageHandler, context)
 		} else if strings.HasPrefix(message, "ls") {
 			directory := GetParam(message)
 			lsRequest := &messages.LSRequest{Directory: directory}
@@ -460,14 +486,14 @@ func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
 				Msg: &messages.Wrapper_LsRequest{LsRequest: lsRequest},
 			}
 			controllerMessageHandler.Send(wrapper)
-			HandleConnection(controllerMessageHandler)
+			HandleConnection(controllerMessageHandler, context)
 		} else if strings.HasPrefix(message, "info"){
 			infoRequest := &messages.InfoRequest{}
 			wrapper := &messages.Wrapper{
 				Msg: &messages.Wrapper_InfoRequest{InfoRequest: infoRequest},
 			}
 			controllerMessageHandler.Send(wrapper)
-			HandleConnection(controllerMessageHandler)
+			HandleConnection(controllerMessageHandler, context)
 		} else if strings.HasPrefix(message, "help"){
 			fmt.Println("Available commands:\nput <file_name>\nget <file_name>\ndelete <file_name>\nls <directory>\ninfo")
 		} else {
@@ -476,22 +502,32 @@ func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn) {
 	}
 }
 
-func main() {
+func InitializeContext() context {
 	controller, port := HandleArgs()
+	return context{controller, port}
+}
+
+type context struct {
+	controllerName string
+	controllerPort string
+}
+
+func main() {
+	context := InitializeContext()
 	InitializeLogger()
-	controllerConn, err := net.Dial("tcp", controller + ":" + port)
+	controllerConn, err := net.Dial("tcp", context.controllerName + ":" + context.controllerPort)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
 	defer controllerConn.Close()
-	fmt.Println("Connected to controller at " + controller + ":" + port)
+	fmt.Println("Connected to controller at " + context.controllerName + ":" + context.controllerPort)
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print(">")
 		if result := scanner.Scan(); result != false {
-			HandleInput(scanner, controllerConn)
+			HandleInput(scanner, controllerConn, context)
 		}
 	}
 }
