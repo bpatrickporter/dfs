@@ -4,7 +4,7 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 log_dir="${script_dir}/stdout_logs"
 chunk_size=15000000
 controller_port_for_clients=25000
-controller_port_for_nodes==25100
+controller_port_for_nodes=25100
 node_port=25200
 root_dir="/bigdata/bpporter/p1-file-system/"
 

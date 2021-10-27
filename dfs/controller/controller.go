@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -77,8 +78,9 @@ func GetChunkToNodesIndex(metadata *messages.Metadata, context context, chunkToN
 
 	counter := 1
 	log.Println("NumChunks: " + strconv.Itoa(int(metadata.NumChunks)))
-	log.Println("NumNodes: " + strconv.Itoa(len(context.activeNodes)))
-	for node, _ := range context.activeNodes {
+	context.activeNodes.lock.Lock()
+	log.Println("NumNodes: " + strconv.Itoa(len(context.activeNodes.cmap)))
+	for node, _ := range context.activeNodes.cmap {
 		log.Println("Adding " + node + " to destination nodes")
 		destinationNodes = append(destinationNodes, node)
 		if counter == int(metadata.NumChunks){
@@ -86,6 +88,7 @@ func GetChunkToNodesIndex(metadata *messages.Metadata, context context, chunkToN
 		}
 		counter++
 	}
+	context.activeNodes.lock.Unlock()
 
 	numNodes := len(destinationNodes)
 	for i := 0; i < int(metadata.NumChunks); i++ {
@@ -137,11 +140,11 @@ func GetListing(directory string, context context) string {
 
 func GetInfo(context context) ([]string, string, []*messages.KeyValuePair) {
 	var nodes []string
-	for node, _ := range context.activeNodes {
+	context.activeNodes.lock.Lock()
+	for node, _ := range context.activeNodes.cmap {
 		nodes = append(nodes, node)
-
-
 	}
+	context.activeNodes.lock.Unlock()
 	diskSpace := "100 TB"
 	requests := []*messages.KeyValuePair{{Key: "orion01", Value: "4"}, {Key: "orion02", Value: "5"}}
 	return nodes, diskSpace, requests
@@ -292,34 +295,22 @@ func DeleteFileFromIndexes(fileName string, context context) {
 	log.Println("Deleted " + fileName + " from file index")
 }
 
-func RecordHeartBeat(node string, port string, context context) {
-	if _, present := context.activeNodes[node + ":" + port]; !present {
-		log.Println(node + ":" + port + " registered with controller")
-		context.activeNodes[node + ":" + port] = 1
-		context.nodeToChunksIndex[node + ":" + port] = make([]string, 0)
-		//for ts
-		log.Print("Active nodes: ")
-		for node, port := range context.activeNodes {
-			log.Printf("-> %s:%s \n", node, port)
-		}
-	} else {
-		context.activeNodes[node]++
-		log.Println("<3" + node + ":" + port + "<3")
-	}
-}
-
 func AnalyzeHeartBeats(context context) {
 	log.Println("HEARTBEAT ANALYZER ROUTINE LAUNCHED")
 	time.Sleep(3 * time.Second)
 	counts := make(map[string]int)
-	for node, heartBeats := range context.activeNodes {
+
+	context.activeNodes.lock.Lock()
+	for node, heartBeats := range context.activeNodes.cmap {
 		counts[node] = heartBeats
 		log.Println("Set up: " + node + " = " + strconv.Itoa(heartBeats))
 	}
+	context.activeNodes.lock.Unlock()
 
 	for {
 		time.Sleep(10 * time.Second)
-		for node, heartBeats := range context.activeNodes {
+		context.activeNodes.lock.Lock()
+		for node, heartBeats := range context.activeNodes.cmap {
 			if count, nodeExists := counts[node]; !nodeExists {
 				//if node on active nodes list isn't in our map, add it
 				counts[node] = heartBeats
@@ -331,13 +322,51 @@ func AnalyzeHeartBeats(context context) {
 					go InitiateRecovery(node, context)
 					//remove node from counts and from active nodes
 					delete(counts, node)
-					delete(context.activeNodes, node)
+					//delete(context.activeNodes, node)
+					context.activeNodes.Delete(node)
 					log.Println("Node " + node + " is offline")
 				} else {
 					//node isn't down, update counts
 					counts[node] = heartBeats
 				}
 			}
+		}
+		context.activeNodes.lock.Unlock()
+	}
+}
+
+func RecordHeartBeat(node string, context context) {
+	context.activeNodes.lock.Lock()
+	if _, present := context.activeNodes.cmap[node]; !present {
+		log.Println(node + " registered with controller")
+		context.activeNodes.cmap[node] = 1
+		context.nodeToChunksIndex[node] = make([]string, 0)
+		//for ts
+		log.Print("Active nodes: ")
+		for node, beats := range context.activeNodes.cmap {
+			log.Printf("-> %s <3 %d \n", node, beats)
+		}
+	} else {
+		context.activeNodes.cmap[node]++
+		log.Println("<3" + node + "<3")
+	}
+	context.activeNodes.lock.Unlock()
+}
+
+func HandleHeartBeats(conn net.Conn, context context) {
+	log.Println("1/N HEARTBEAT HANDLER ROUTINES LAUNCHED")
+	messageHandler := messages.NewMessageHandler(conn)
+	for {
+		request, _ := messageHandler.Receive()
+		switch msg := request.Msg.(type) {
+		case *messages.Wrapper_HeartbeatMessage:
+			node := msg.HeartbeatMessage.Node
+			RecordHeartBeat(node, context)
+		case nil:
+			continue
+		default:
+			log.Println("default")
+			continue
 		}
 	}
 }
@@ -355,25 +384,6 @@ func ListenForHeartBeats(listeningPort string, context context) {
 					go HandleHeartBeats(conn, context)
 				}
 			}
-		}
-	}
-}
-
-func HandleHeartBeats(conn net.Conn, context context) {
-	log.Println("1/N HEARTBEAT HANDLER ROUTINES LAUNCHED")
-	messageHandler := messages.NewMessageHandler(conn)
-	for {
-		request, _ := messageHandler.Receive()
-		switch msg := request.Msg.(type) {
-		case *messages.Wrapper_HeartbeatMessage:
-			node := msg.HeartbeatMessage.Node
-			port := msg.HeartbeatMessage.Port
-			RecordHeartBeat(node, port, context)
-		case nil:
-			continue
-		default:
-			log.Println("default")
-			continue
 		}
 	}
 }
@@ -450,9 +460,10 @@ func UpdateIndexes(context context, receiver string, chunk string) {
 	chunkToNodeIndex[chunk] = nodeList //redundant?
 }
 
-func FindReceiver(nodeList []string, activeNodes map[string]int) (string, bool) {
+func FindReceiver(nodeList []string, activeNodes ConcurrentMap) (string, bool) {
 	var foundReceiver bool
-	for node, _ := range activeNodes {
+	activeNodes.lock.Lock()
+	for node, _ := range activeNodes.cmap {
 		foundReceiver = true
 		for j := range nodeList {
 			if node == nodeList[j] {
@@ -463,6 +474,7 @@ func FindReceiver(nodeList []string, activeNodes map[string]int) (string, bool) 
 			return node, foundReceiver
 		}
 	}
+	activeNodes.lock.Unlock()
 	return "", foundReceiver
 }
 
@@ -542,7 +554,7 @@ func HandleConnection(conn net.Conn, context context) {
 }
 
 func InitializeContext() (context, error) {
-	chunkSize, err := strconv.Atoi(os.Args[2])
+	chunkSize, err := strconv.Atoi(os.Args[3])
 	var lsDirectory string
 	if _, isOrion := IsHostOrion(); isOrion {
 		lsDirectory = "/bigdata/bpporter/ls/"
@@ -550,7 +562,10 @@ func InitializeContext() (context, error) {
 		lsDirectory = "/Users/pport/677/ls/"
 	}
 	goRoutines := 1
-	return context{activeNodes: make(map[string]int),
+	nodeMap := make(map[string]int)
+	lock := sync.RWMutex{}
+	activeNodes := ConcurrentMap{nodeMap, lock}
+	return context{activeNodes: activeNodes,
 		nodeToChunksIndex: make(map[string][]string),
 		fileToChunkToNodesIndex: make(map[string]map[string][]string),
 		bloomFilter: make(map[string]int),
@@ -565,7 +580,7 @@ func HandleArgs() (string, string) {
 }
 
 type context struct {
-	activeNodes map[string]int
+	activeNodes ConcurrentMap
 	nodeToChunksIndex map[string][]string
 	fileToChunkToNodesIndex map[string]map[string][]string
 	bloomFilter map[string]int
@@ -590,6 +605,37 @@ type context struct {
 	//[   ] deleting chunks from nodeToChunks index <- a problem for another day
 	//[   ] deny service if active nodes < 3
 
+}
+
+type ConcurrentMap struct {
+	cmap map[string]int
+	lock sync.RWMutex
+}
+
+func (cmap ConcurrentMap) Put(k string, v int) {
+	cmap.lock.Lock()
+	cmap.cmap[k] = v
+	cmap.lock.Unlock()
+}
+
+
+func (cmap ConcurrentMap) Get(k string) (int, bool) {
+	cmap.lock.Lock()
+	v, b := cmap.cmap[k]
+	cmap.lock.Unlock()
+	return v, b
+}
+
+func (cmap ConcurrentMap) Delete(k string) {
+	cmap.lock.Lock()
+	delete(cmap.cmap, k)
+	cmap.lock.Unlock()
+}
+
+func (cmap ConcurrentMap) Increment(k string) {
+	cmap.lock.Lock()
+	cmap.cmap[k]++
+	cmap.lock.Unlock()
 }
 
 type validationResult struct {

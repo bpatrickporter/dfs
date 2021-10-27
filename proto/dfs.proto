@@ -63,7 +63,6 @@ message ListOfStrings {
 
 message Heartbeat {
     string node = 1;
-    string port = 2;
 }
 
 message KeyValuePair {
