@@ -265,7 +265,6 @@ func ForwardChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.Chunk
 		log.Fatalln()
 	}
 	reader := bytes.NewReader(buffer)
-
 	var conn net.Conn
 	for {
 		if conn, err = net.Dial("tcp", nextUp); err != nil {
@@ -340,6 +339,7 @@ func HandleConnection(conn net.Conn, context context) {
 			messageHandler.Close()
 			return
 		case nil:
+			log.Println("nil")
 			messageHandler.Close()
 			return
 		default:
@@ -373,7 +373,7 @@ func main() {
 
 	for {
 		if conn, err := listener.Accept(); err == nil {
-			HandleConnection(conn, context)
+			go HandleConnection(conn, context)
 		}
 	}
 }

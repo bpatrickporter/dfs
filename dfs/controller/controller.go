@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -321,8 +322,7 @@ func AnalyzeHeartBeats(context context) {
 					//node is down, initiate recovery
 					go InitiateRecovery(node, context)
 					//remove node from counts and from active nodes
-					delete(counts, node)
-					//delete(context.activeNodes, node)
+					delete(context.activeNodes.cmap, node)
 					context.activeNodes.Delete(node)
 					log.Println("Node " + node + " is offline")
 				} else {
@@ -460,7 +460,7 @@ func UpdateIndexes(context context, receiver string, chunk string) {
 	chunkToNodeIndex[chunk] = nodeList //redundant?
 }
 
-func FindReceiver(nodeList []string, activeNodes ConcurrentMap) (string, bool) {
+func FindReceiver(nodeList []string, activeNodes *ConcurrentMap) (string, bool) {
 	var foundReceiver bool
 	activeNodes.lock.Lock()
 	for node, _ := range activeNodes.cmap {
@@ -564,7 +564,7 @@ func InitializeContext() (context, error) {
 	goRoutines := 1
 	nodeMap := make(map[string]int)
 	lock := sync.RWMutex{}
-	activeNodes := ConcurrentMap{nodeMap, lock}
+	activeNodes := &ConcurrentMap{nodeMap, lock}
 	return context{activeNodes: activeNodes,
 		nodeToChunksIndex: make(map[string][]string),
 		fileToChunkToNodesIndex: make(map[string]map[string][]string),
@@ -580,7 +580,7 @@ func HandleArgs() (string, string) {
 }
 
 type context struct {
-	activeNodes ConcurrentMap
+	activeNodes *ConcurrentMap
 	nodeToChunksIndex map[string][]string
 	fileToChunkToNodesIndex map[string]map[string][]string
 	bloomFilter map[string]int
@@ -612,27 +612,27 @@ type ConcurrentMap struct {
 	lock sync.RWMutex
 }
 
-func (cmap ConcurrentMap) Put(k string, v int) {
+func (cmap *ConcurrentMap) Put(k string, v int) {
 	cmap.lock.Lock()
 	cmap.cmap[k] = v
 	cmap.lock.Unlock()
 }
 
 
-func (cmap ConcurrentMap) Get(k string) (int, bool) {
+func (cmap *ConcurrentMap) Get(k string) (int, bool) {
 	cmap.lock.Lock()
 	v, b := cmap.cmap[k]
 	cmap.lock.Unlock()
 	return v, b
 }
 
-func (cmap ConcurrentMap) Delete(k string) {
+func (cmap *ConcurrentMap) Delete(k string) {
 	cmap.lock.Lock()
 	delete(cmap.cmap, k)
 	cmap.lock.Unlock()
 }
 
-func (cmap ConcurrentMap) Increment(k string) {
+func (cmap *ConcurrentMap) Increment(k string) {
 	cmap.lock.Lock()
 	cmap.cmap[k]++
 	cmap.lock.Unlock()
@@ -666,7 +666,7 @@ func main() {
 	go ListenForHeartBeats(nodeListeningPort, context)
 	for {
 		if conn, err := listener.Accept(); err == nil {
-			HandleConnection(conn, context)
+			go HandleConnection(conn, context)
 		}
 	}
 }

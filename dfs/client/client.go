@@ -262,7 +262,6 @@ func DeleteChunk(node string, wrapper *messages.Wrapper) {
 
 func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 	chunkToNodeListIndex := GetChunkIndex(metadata, destinationNodes)
-
 	f, err := os.Open(metadata.FileName)
 	if err != nil {
 		log.Fatalln(err.Error())
@@ -279,8 +278,8 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 		}
 		currentChunk := strconv.Itoa(counter) + "_" + metadata.FileName
 		nodeList := chunkToNodeListIndex[currentChunk]
-		wrapper := PackagePutRequestChunk(currentChunk, metadata, checkSum, numBytes, nodeList)
-
+		forwardingList := nodeList[1:]
+		wrapper := PackagePutRequestChunk(currentChunk, metadata, checkSum, numBytes, forwardingList)
 		var conn net.Conn
 		for {
 			if conn, err = net.Dial("tcp", nodeList[0]); err != nil {
@@ -290,7 +289,6 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 				break
 			}
 		}
-
 		messageHandler := messages.NewMessageHandler(conn)
 		messageHandler.Send(wrapper)
 		writer := bufio.NewWriter(conn)
