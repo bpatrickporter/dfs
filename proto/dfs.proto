@@ -61,13 +61,9 @@ message ListOfStrings {
     repeated string strings = 1;
 }
 
-message Registration {
-    string node = 1;
-    string port = 2;
-}
-
 message Heartbeat {
     string node = 1;
+    string port = 2;
 }
 
 message KeyValuePair {
@@ -113,13 +109,12 @@ message Wrapper {
         GetResponseChunk get_response_chunk_message = 6;
         DeleteRequest delete_request_message = 7;
         DeleteResponse delete_response_message = 8;
-        Registration registration_message = 9;
-        Heartbeat heartbeat_message = 10;
-        LSRequest ls_request = 11;
-        LSResponse ls_response = 12;
-        InfoRequest info_request = 13;
-        InfoResponse info_response = 14;
-        RecoveryInstruction recovery_instruction_message = 15;
-        CorruptFileNotice corrupt_file_notice_message = 16;
+        Heartbeat heartbeat_message = 9;
+        LSRequest ls_request = 10;
+        LSResponse ls_response = 11;
+        InfoRequest info_request = 12;
+        InfoResponse info_response = 13;
+        RecoveryInstruction recovery_instruction_message = 14;
+        CorruptFileNotice corrupt_file_notice_message = 15;
     }
 }

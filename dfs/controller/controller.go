@@ -281,18 +281,6 @@ func PackageInfoResponse(nodes []string, diskSpace string, requestsPerNode []*me
 	return wrapper
 }
 
-func RegisterNode(msg *messages.Wrapper_RegistrationMessage, context *context) {
-	node := msg.RegistrationMessage.GetNode()
-	port := msg.RegistrationMessage.GetPort()
-	context.activeNodes[node + ":" + port] = 0
-	context.nodeToChunksIndex[node + ":" + port] = make([]string, 0)
-	log.Println(node + ":" + port + " registered with controller")
-	log.Print("Active nodes: ")
-	for node, port := range context.activeNodes {
-		log.Printf("-> %s:%s \n", node, port)
-	}
-}
-
 func DeleteFileFromIndexes(fileName string, context context) {
 	delete(context.fileToChunkToNodesIndex, fileName)
 	//delete from ls directory
@@ -304,13 +292,25 @@ func DeleteFileFromIndexes(fileName string, context context) {
 	log.Println("Deleted " + fileName + " from file index")
 }
 
-func RecordHeartBeat(node string, context context) {
-	context.activeNodes[node] = context.activeNodes[node] + 1
-	log.Println("<3" + node + "<3")
+func RecordHeartBeat(node string, port string, context context) {
+	if _, present := context.activeNodes[node + ":" + port]; !present {
+		log.Println(node + ":" + port + " registered with controller")
+		context.activeNodes[node + ":" + port] = 1
+		context.nodeToChunksIndex[node + ":" + port] = make([]string, 0)
+		//for ts
+		log.Print("Active nodes: ")
+		for node, port := range context.activeNodes {
+			log.Printf("-> %s:%s \n", node, port)
+		}
+	} else {
+		context.activeNodes[node]++
+		log.Println("<3" + node + ":" + port + "<3")
+	}
 }
 
 func AnalyzeHeartBeats(context context) {
-	//copy the active nodes map
+	log.Println("HEARTBEAT ANALYZER ROUTINE LAUNCHED")
+	time.Sleep(3 * time.Second)
 	counts := make(map[string]int)
 	for node, heartBeats := range context.activeNodes {
 		counts[node] = heartBeats
@@ -338,6 +338,42 @@ func AnalyzeHeartBeats(context context) {
 					counts[node] = heartBeats
 				}
 			}
+		}
+	}
+}
+
+func ListenForHeartBeats(listeningPort string, context context) {
+	log.Println("HEARTBEAT LISTENER ROUTINE LAUNCHED")
+	go AnalyzeHeartBeats(context)
+	for {
+		listener, err := net.Listen("tcp", ":"+ listeningPort)
+		if err != nil {
+			log.Println(err.Error())
+		} else {
+			for {
+				if conn, err := listener.Accept(); err == nil {
+					go HandleHeartBeats(conn, context)
+				}
+			}
+		}
+	}
+}
+
+func HandleHeartBeats(conn net.Conn, context context) {
+	log.Println("1/N HEARTBEAT HANDLER ROUTINES LAUNCHED")
+	messageHandler := messages.NewMessageHandler(conn)
+	for {
+		request, _ := messageHandler.Receive()
+		switch msg := request.Msg.(type) {
+		case *messages.Wrapper_HeartbeatMessage:
+			node := msg.HeartbeatMessage.Node
+			port := msg.HeartbeatMessage.Port
+			RecordHeartBeat(node, port, context)
+		case nil:
+			continue
+		default:
+			log.Println("default")
+			continue
 		}
 	}
 }
@@ -445,76 +481,64 @@ func HandleConnection(conn net.Conn, context context) {
 	*context.goRoutines = *context.goRoutines + 1
 	log.Println("GoRoutines: " + strconv.Itoa(*context.goRoutines))
 	messageHandler := messages.NewMessageHandler(conn)
-	Loop:
-		for {
-			request, _ := messageHandler.Receive()
-			switch msg := request.Msg.(type) {
-			case *messages.Wrapper_RegistrationMessage:
-				RegisterNode(msg, &context)
-				messageHandler.Close()
-				break Loop
-			case *messages.Wrapper_PutRequestMessage:
-				metadata := msg.PutRequestMessage.GetMetadata()
-				validationResult := ValidatePutRequest(metadata, context)
-				wrapper := PackagePutResponse(validationResult, metadata, &context)
-				messageHandler.Send(wrapper)
-			case *messages.Wrapper_GetRequestMessage:
-				log.Println("Get request message received")
-				fileName := msg.GetRequestMessage.FileName
-				results := FindChunks(fileName, context)
-				if results.fileExists {
-					log.Println("file exists")
-				} else {
-					log.Println("file doesn't exist")
-				}
-				wrapper := PackageGetResponse(results)
-				messageHandler.Send(wrapper)
-			case *messages.Wrapper_DeleteRequestMessage:
-				log.Println("Delete request message received")
-				fileName := msg.DeleteRequestMessage.FileName
-				results := FindChunks(fileName, context)
-				if results.fileExists {
-					DeleteFileFromIndexes(fileName, context)
-				}
-				wrapper := PackageDeleteResponse(results)
-				messageHandler.Send(wrapper)
-			case *messages.Wrapper_HeartbeatMessage:
-				node := msg.HeartbeatMessage.Node
-				RecordHeartBeat(node, context)
-				messageHandler.Close()
-				break Loop
-			case *messages.Wrapper_LsRequest:
-				directory := msg.LsRequest.Directory
-				listing := GetListing(directory, context)
-				wrapper := PackageLSResponse(listing)
-				messageHandler.Send(wrapper)
-			case *messages.Wrapper_InfoRequest:
-				nodeList, diskSpace, requestsPerNode := GetInfo(context)
-				wrapper := PackageInfoResponse(nodeList, diskSpace, requestsPerNode)
-				messageHandler.Send(wrapper)
-			case *messages.Wrapper_CorruptFileNoticeMessage:
-				node := msg.CorruptFileNoticeMessage.Node
-				chunk := msg.CorruptFileNoticeMessage.Chunk
-				_, fileName := GetIndexAndFileName(chunk)
-				chunkToNodesIndex := context.fileToChunkToNodesIndex[fileName]
-				sender, _ := FindSender(node, chunkToNodesIndex[chunk])
-				nodeMessageHandler := messages.EstablishConnection(sender)
-				wrapper := PackageRecoveryInstruction(node, chunk)
-				nodeMessageHandler.Send(wrapper)
-				nodeMessageHandler.Close()
-				messageHandler.Close()
-				log.Println("Sending recovery instructions")
-				log.Println(sender + " > " + node + " : " + chunk)
-				break Loop
-			case nil:
-				continue
-			default:
-				log.Println("default")
-				continue
+	for {
+		request, _ := messageHandler.Receive()
+		switch msg := request.Msg.(type) {
+		case *messages.Wrapper_PutRequestMessage:
+			metadata := msg.PutRequestMessage.GetMetadata()
+			validationResult := ValidatePutRequest(metadata, context)
+			wrapper := PackagePutResponse(validationResult, metadata, &context)
+			messageHandler.Send(wrapper)
+		case *messages.Wrapper_GetRequestMessage:
+			log.Println("Get request message received")
+			fileName := msg.GetRequestMessage.FileName
+			results := FindChunks(fileName, context)
+			if results.fileExists {
+				log.Println("file exists")
+			} else {
+				log.Println("file doesn't exist")
 			}
+			wrapper := PackageGetResponse(results)
+			messageHandler.Send(wrapper)
+		case *messages.Wrapper_DeleteRequestMessage:
+			log.Println("Delete request message received")
+			fileName := msg.DeleteRequestMessage.FileName
+			results := FindChunks(fileName, context)
+			if results.fileExists {
+				DeleteFileFromIndexes(fileName, context)
+			}
+			wrapper := PackageDeleteResponse(results)
+			messageHandler.Send(wrapper)
+		case *messages.Wrapper_LsRequest:
+			directory := msg.LsRequest.Directory
+			listing := GetListing(directory, context)
+			wrapper := PackageLSResponse(listing)
+			messageHandler.Send(wrapper)
+		case *messages.Wrapper_InfoRequest:
+			nodeList, diskSpace, requestsPerNode := GetInfo(context)
+			wrapper := PackageInfoResponse(nodeList, diskSpace, requestsPerNode)
+			messageHandler.Send(wrapper)
+		case *messages.Wrapper_CorruptFileNoticeMessage:
+			node := msg.CorruptFileNoticeMessage.Node
+			chunk := msg.CorruptFileNoticeMessage.Chunk
+			_, fileName := GetIndexAndFileName(chunk)
+			chunkToNodesIndex := context.fileToChunkToNodesIndex[fileName]
+			sender, _ := FindSender(node, chunkToNodesIndex[chunk])
+			nodeMessageHandler := messages.EstablishConnection(sender)
+			wrapper := PackageRecoveryInstruction(node, chunk)
+			nodeMessageHandler.Send(wrapper)
+			nodeMessageHandler.Close()
+			messageHandler.Close()
+			log.Println("Sending recovery instructions")
+			log.Println(sender + " > " + node + " : " + chunk)
+			return
+		case nil:
+			continue
+		default:
+			log.Println("default")
+			continue
 		}
-	log.Println("Exiting for loop")
-	*context.goRoutines--
+	}
 }
 
 func InitializeContext() (context, error) {
@@ -534,6 +558,10 @@ func InitializeContext() (context, error) {
 		lsDirectory: lsDirectory,
 		goRoutines: &goRoutines},
 		err
+}
+
+func HandleArgs() (string, string) {
+	return os.Args[1], os.Args[2]
 }
 
 type context struct {
@@ -577,20 +605,22 @@ type locationResult struct {
 
 func main() {
 	context, err := InitializeContext()
+	clientListeningPort, nodeListeningPort := HandleArgs()
+
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
 	InitializeLogger()
-	listener, err := net.Listen("tcp", ":" + os.Args[1])
+	listener, err := net.Listen("tcp", ":" + clientListeningPort)
 	if err != nil {
 		log.Fatalln(err.Error())
 		return
 	}
-	go AnalyzeHeartBeats(context)
+	go ListenForHeartBeats(nodeListeningPort, context)
 	for {
 		if conn, err := listener.Accept(); err == nil {
-			go HandleConnection(conn, context)
+			HandleConnection(conn, context)
 		}
 	}
 }
