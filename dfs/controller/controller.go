@@ -41,9 +41,15 @@ func InitializeLogger() {
 	var err error
 
 	if _, isOrion := IsHostOrion(); isOrion {
-		file, err = os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/controller_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+		file, err = os.OpenFile(
+			"/home/bpporter/P1-patrick/dfs/logs/controller_logs.txt",
+			os.O_TRUNC|os.O_CREATE|os.O_WRONLY,
+			0666)
 	} else {
-		file, err = os.OpenFile("logs/controller_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+		file, err = os.OpenFile(
+			"logs/controller_logs.txt",
+			os.O_TRUNC|os.O_CREATE|os.O_WRONLY,
+			0666)
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -143,21 +149,20 @@ func GetListing(directory string, context context) string {
 }
 
 func GetInfo(context context) ([]string, string, []*messages.KeyValuePair) {
-	//get active nodes
+	//active nodes
 	var nodes []string
 	context.activeNodes.lock.Lock()
 	for node, _ := range context.activeNodes.cmap {
 		nodes = append(nodes, node)
 	}
 	context.activeNodes.lock.Unlock()
-	//get disk space
+	//disk space
 	diskSpace := "100 TB"
-	//get requests per page
+	//requests per page
 	requests := make([]*messages.KeyValuePair, 0)
 	for node, count := range context.requestsPerNode {
 		requests = append(requests, &messages.KeyValuePair{Key: node, Value: strconv.Itoa(count)})
 	}
-	//requests := []*messages.KeyValuePair{{Key: "orion01", Value: "4"}, {Key: "orion02", Value: "5"}}
 	return nodes, diskSpace, requests
 }
 
@@ -221,16 +226,19 @@ func FindChunks(fileName string, context context) locationResult {
 }
 
 func PackagePutResponse(validationResult validationResult, metadata *messages.Metadata, context *context) *messages.Wrapper {
-	putResponse := &messages.PutResponse{Available: !validationResult.fileExists, Metadata: metadata, Nodes: validationResult.nodeList}
+	putResponse := &messages.PutResponse{
+		Available: !validationResult.fileExists,
+		Metadata: metadata,
+		Nodes: validationResult.nodeList}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_PutResponseMessage{PutResponseMessage: putResponse},
+		Msg: &messages.Wrapper_PutResponseMessage{
+			PutResponseMessage: putResponse},
 	}
 	log.Println("Sending put response to client")
 	return wrapper
 }
 
 func PackageDeleteResponse(result locationResult) *messages.Wrapper {
-	//chunk node
 	chunks := make([]string, 0)
 	nodeLists := make([]*messages.ListOfStrings, 0)
 
@@ -246,19 +254,20 @@ func PackageDeleteResponse(result locationResult) *messages.Wrapper {
 		}
 	}
 
-	deleteResponse := &messages.DeleteResponse{Available: result.fileExists, Chunks: chunks, NodeLists: nodeLists}
+	deleteResponse := &messages.DeleteResponse{
+		Available: result.fileExists,
+		Chunks: chunks, NodeLists: nodeLists}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_DeleteResponseMessage{DeleteResponseMessage: deleteResponse},
+		Msg: &messages.Wrapper_DeleteResponseMessage{
+			DeleteResponseMessage: deleteResponse},
 	}
 	log.Println("Sending delete response to client")
 	return wrapper
 }
 
 func PackageGetResponse(result locationResult) *messages.Wrapper {
-	//pairs := make([]*messages.KeyValuePair, 0)
 	chunks := make([]string, 0)
 	nodes := make([]string, 0)
-
 
 	if result.fileExists {
 		for chunk, nodeList := range result.chunkLocation {
@@ -271,9 +280,13 @@ func PackageGetResponse(result locationResult) *messages.Wrapper {
 		}
 	}
 
-	getResponse := &messages.GetResponse{Exists: result.fileExists, Chunks: chunks, Nodes: nodes}
+	getResponse := &messages.GetResponse{
+		Exists: result.fileExists,
+		Chunks: chunks,
+		Nodes: nodes}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_GetResponseMessage{GetResponseMessage: getResponse},
+		Msg: &messages.Wrapper_GetResponseMessage{
+			GetResponseMessage: getResponse},
 	}
 	log.Println("Sending get response to client")
 	return wrapper
@@ -289,16 +302,19 @@ func PackageLSResponse(listing string) *messages.Wrapper {
 }
 
 func PackageInfoResponse(nodes []string, diskSpace string, requestsPerNode []*messages.KeyValuePair) *messages.Wrapper {
-	infoResponse := &messages.InfoResponse{Nodes: nodes, AvailableDiskSpace: diskSpace, RequestsPerNode: requestsPerNode}
+	infoResponse := &messages.InfoResponse{
+		Nodes: nodes,
+		AvailableDiskSpace: diskSpace,
+		RequestsPerNode: requestsPerNode}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_InfoResponse{InfoResponse: infoResponse},
+		Msg: &messages.Wrapper_InfoResponse{
+			InfoResponse: infoResponse},
 	}
 	return wrapper
 }
 
 func DeleteFileFromIndexes(fileName string, context context) {
 	delete(context.fileToChunkToNodesIndex, fileName)
-	//delete from ls directory
 	localDirectory := context.lsDirectory + fileName
 	err := os.Remove(localDirectory)
 	if err != nil {
@@ -504,8 +520,6 @@ func FindSender(node string, nodeList []string) (string, bool) {
 }
 
 func HandleConnection(conn net.Conn, context context) {
-	*context.goRoutines = *context.goRoutines + 1
-	log.Println("GoRoutines: " + strconv.Itoa(*context.goRoutines))
 	messageHandler := messages.NewMessageHandler(conn)
 	for {
 		request, _ := messageHandler.Receive()
@@ -575,7 +589,6 @@ func InitializeContext() (context, error) {
 	} else {
 		lsDirectory = "/Users/pport/677/ls/"
 	}
-	goRoutines := 1
 	nodeMap := make(map[string]int)
 	lock := sync.RWMutex{}
 	activeNodes := &ConcurrentMap{nodeMap, lock}
@@ -586,8 +599,7 @@ func InitializeContext() (context, error) {
 		fileToChunkToNodesIndex: make(map[string]map[string][]string),
 		bloomFilter: make(map[string]int),
 		chunkSize: chunkSize,
-		lsDirectory: lsDirectory,
-		goRoutines: &goRoutines},
+		lsDirectory: lsDirectory},
 		err
 }
 
@@ -603,7 +615,6 @@ type context struct {
 	bloomFilter map[string]int
 	chunkSize int
 	lsDirectory string
-	goRoutines *int
 
 	//TODO - for grading rubric
 	//[   ]On-disk file index and in-memory Bloom filter implementation

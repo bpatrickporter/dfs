@@ -42,9 +42,15 @@ func InitializeLogger() {
 	var err error
 
 	if host, isOrion := IsHostOrion(); isOrion {
-		file, err = os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/" + host + "_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+		file, err = os.OpenFile(
+			"/home/bpporter/P1-patrick/dfs/logs/" + host + "_logs.txt",
+			os.O_TRUNC|os.O_CREATE|os.O_WRONLY,
+			0666)
 	} else {
-		file, err = os.OpenFile("logs/node_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+		file, err = os.OpenFile(
+			"logs/node_logs.txt",
+			os.O_TRUNC|os.O_CREATE|os.O_WRONLY,
+			0666)
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -76,9 +82,11 @@ func SendHeartBeats(context context) {
 }
 
 func PackageHeartBeat(hostName string, port string) *messages.Wrapper {
-	heartBeat := &messages.Heartbeat{Node: hostName + ":" + port}
+	heartBeat := &messages.Heartbeat{
+		Node: hostName + ":" + port}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_HeartbeatMessage{HeartbeatMessage: heartBeat},
+		Msg: &messages.Wrapper_HeartbeatMessage{
+			HeartbeatMessage: heartBeat},
 	}
 	return wrapper
 }
@@ -113,8 +121,16 @@ func PackageMetadata(context context, chunkName string) (*messages.Metadata, *me
 	actualChunkSize, _ := strconv.Atoi(slices[4])
 	checkSum := slices[5]
 	chunkCheckSum := slices[6]
-	metadata := &messages.Metadata{FileName: fileName, FileSize: int32(fileSize), NumChunks: int32(numChunks), ChunkSize: int32(standardChunkSize), CheckSum: checkSum}
-	chunkMetadata := &messages.ChunkMetadata{ChunkName: chunkName, ChunkSize: int32(actualChunkSize), ChunkCheckSum: chunkCheckSum}
+	metadata := &messages.Metadata{
+		FileName: fileName,
+		FileSize: int32(fileSize),
+		NumChunks: int32(numChunks),
+		ChunkSize: int32(standardChunkSize),
+		CheckSum: checkSum}
+	chunkMetadata := &messages.ChunkMetadata{
+		ChunkName: chunkName,
+		ChunkSize: int32(actualChunkSize),
+		ChunkCheckSum: chunkCheckSum}
 
 	return metadata, chunkMetadata
 }
@@ -131,8 +147,13 @@ func WriteMetadataFile(metadata *messages.Metadata, chunkMetadata *messages.Chun
 		return err
 	}
 
-	metadataBytes := []byte(fileName + "," + strconv.Itoa(fileSize) + "," + strconv.Itoa(numChunks) + "," + strconv.Itoa(int(standardChunkSize)) + "," + strconv.Itoa(int(actualChunkSize)) + "," + checkSum + "," + chunkCheckSum)
-
+	metadataBytes := []byte(fileName + "," +
+		strconv.Itoa(fileSize) + "," +
+		strconv.Itoa(numChunks) + "," +
+		strconv.Itoa(int(standardChunkSize)) + "," +
+		strconv.Itoa(int(actualChunkSize)) + "," +
+		checkSum + "," +
+		chunkCheckSum)
 
 	w := bufio.NewWriter(file)
 	w.Write(metadataBytes)
@@ -176,30 +197,6 @@ func WriteChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.ChunkMe
 		log.Println(err.Error())
 	}
 	log.Println(chunkMetadata.ChunkName + " wrote " + strconv.Itoa(int(n)) + " bytes to file")
-}
-
-func VerifyCheckSumsMatch(metadata *messages.ChunkMetadata, context context) bool {
-	file, err := os.Open(context.rootDir + metadata.ChunkName)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-	checkSum := messages.GetCheckSum(*file)
-	checkSumResults := strings.Compare(metadata.ChunkCheckSum, checkSum) == 0
-	log.Println("Original Checksum: " + metadata.ChunkCheckSum)
-	log.Println("New Checksum     : " + checkSum)
-	log.Println("Checksums match: " + strconv.FormatBool(checkSumResults))
-	return checkSumResults
-}
-
-func SendAck(results bool, messageHandler *messages.MessageHandler) error {
-	ack := &messages.Ack{CheckSumMatched: results}
-	response := &messages.Wrapper{
-		Msg: &messages.Wrapper_AcknowledgeMessage{AcknowledgeMessage: ack},
-	}
-	err := messageHandler.Send(response)
-	fmt.Println("Ack status: " + strconv.FormatBool(ack.CheckSumMatched))
-	log.Println("Acknowledgment sent to client")
-	return err
 }
 
 func DeleteChunk(chunkName string, context context) {
@@ -287,17 +284,24 @@ func ForwardChunk(fileMetadata *messages.Metadata, chunkMetadata *messages.Chunk
 }
 
 func PackagePutRequestChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Metadata, forwardingList []string) *messages.Wrapper {
-	msg := messages.PutRequest{Metadata: fileMetadata, ChunkMetadata: chunkMetadata, ForwardingList: forwardingList}
+	msg := messages.PutRequest{
+		Metadata: fileMetadata,
+		ChunkMetadata: chunkMetadata,
+		ForwardingList: forwardingList}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
+		Msg: &messages.Wrapper_PutRequestMessage{
+			PutRequestMessage: &msg},
 	}
 	return wrapper
 }
 
 func PackageGetResponseChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Metadata) *messages.Wrapper {
-	message := &messages.GetResponseChunk{ChunkMetadata: chunkMetadata, Metadata: fileMetadata}
+	message := &messages.GetResponseChunk{
+		ChunkMetadata: chunkMetadata,
+		Metadata: fileMetadata}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_GetResponseChunkMessage{GetResponseChunkMessage: message},
+		Msg: &messages.Wrapper_GetResponseChunkMessage{
+			GetResponseChunkMessage: message},
 	}
 	return wrapper
 }
@@ -312,9 +316,6 @@ func HandleConnection(conn net.Conn, context context) {
 			chunkMetadata := msg.PutRequestMessage.ChunkMetadata
 			forwardingList := msg.PutRequestMessage.ForwardingList
 			WriteChunk(metadata, chunkMetadata, messageHandler, context)
-			//results := VerifyCheckSumsMatch(metadata, context)
-			//VerifyCheckSumsMatch(chunkMetadata, context)
-			//SendAck(results, messageHandler)
 			ForwardChunk(metadata, chunkMetadata, forwardingList, context)
 			messageHandler.Close()
 			return
@@ -350,7 +351,11 @@ func HandleConnection(conn net.Conn, context context) {
 
 func InitializeContext() context {
 	listeningPort, rootDir, controllerName, controllerPort := HandleArgs()
-	return context{rootDir: rootDir, listeningPort: listeningPort, controllerName: controllerName, controllerPort: controllerPort}
+	return context{
+		rootDir: rootDir,
+		listeningPort: listeningPort,
+		controllerName: controllerName,
+		controllerPort: controllerPort}
 }
 
 type context struct {

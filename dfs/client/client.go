@@ -18,9 +18,6 @@ import (
 func HandleArgs() (string, string) {
 	controller := os.Args[1]
 	port := os.Args[2]
-	//file := os.Args[3]
-	//chunkSize, err := strconv.Atoi(os.Args[4])
-	//return host, port, file, chunkSize, err
 	return controller, port
 }
 
@@ -43,9 +40,15 @@ func InitializeLogger() {
 	var file *os.File
 	var err error
 	if _, isOrion := IsHostOrion(); isOrion {
-		file, err = os.OpenFile("/home/bpporter/P1-patrick/dfs/logs/client_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+		file, err = os.OpenFile(
+			"/home/bpporter/P1-patrick/dfs/logs/client_logs.txt",
+			os.O_TRUNC|os.O_CREATE|os.O_WRONLY,
+			0666)
 	} else {
-		file, err = os.OpenFile("logs/client_logs.txt", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+		file, err = os.OpenFile(
+			"logs/client_logs.txt",
+			os.O_TRUNC|os.O_CREATE|os.O_WRONLY,
+			0666)
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -63,16 +66,6 @@ func GetMetadata(fileName string) (int, string) {
 	return int(fileSize), checkSum
 }
 
-func LogMetadata(metadata *messages.Metadata) {
-	fileName := metadata.GetFileName()
-	fileSize := int(metadata.GetFileSize())
-	numChunks := int(metadata.GetNumChunks())
-	chunkSize := int(metadata.GetChunkSize())
-	checkSum := metadata.GetCheckSum()
-	log.Printf("Metadata: \nName: %s \nSize: %d \nChunks: %d \nChunk Size: %d \n", fileName, fileSize, numChunks, chunkSize)
-	log.Printf("Checksum: %s \n", checkSum)
-}
-
 func UnpackPutResponse(msg *messages.Wrapper_PutResponseMessage) (bool, []string, *messages.Metadata) {
 	available := msg.PutResponseMessage.GetAvailable()
 	nodes := msg.PutResponseMessage.GetNodes()
@@ -83,7 +76,6 @@ func UnpackPutResponse(msg *messages.Wrapper_PutResponseMessage) (bool, []string
 
 func UnpackDeleteResponse(msg *messages.Wrapper_DeleteResponseMessage) (bool, []string, []*messages.ListOfStrings){
 	fileExists := msg.DeleteResponseMessage.Available
-	//chunkLocations := msg.DeleteResponseMessage.ChunkNodePairs
 	chunks := msg.DeleteResponseMessage.Chunks
 	nodeLists := msg.DeleteResponseMessage.NodeLists
 	log.Println("Delete Response message received")
@@ -99,7 +91,6 @@ func UnpackDeleteResponse(msg *messages.Wrapper_DeleteResponseMessage) (bool, []
 
 func UnpackGetResponse(msg *messages.Wrapper_GetResponseMessage) (bool, []string, []string) {
 	fileExists := msg.GetResponseMessage.Exists
-	//chunkLocations := msg.GetResponseMessage.ChunkNodePairs
 	chunks := msg.GetResponseMessage.Chunks
 	nodes := msg.GetResponseMessage.Nodes
 	log.Println("Get Response message received")
@@ -116,19 +107,26 @@ func UnpackGetResponse(msg *messages.Wrapper_GetResponseMessage) (bool, []string
 func PackagePutRequest(fileName string) *messages.Wrapper {
 	log.Println("Put input received")
 	fileSize, checkSum := GetMetadata(fileName)
-	metadata := &messages.Metadata{FileName: fileName, FileSize: int32(fileSize), CheckSum: checkSum}
-	msg := messages.PutRequest{Metadata: metadata}
+	metadata := &messages.Metadata{
+		FileName: fileName,
+		FileSize: int32(fileSize),
+		CheckSum: checkSum}
+	msg := messages.PutRequest{
+		Metadata: metadata}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
+		Msg: &messages.Wrapper_PutRequestMessage{
+			PutRequestMessage: &msg},
 	}
 	log.Println("Sending put request")
 	return wrapper
 }
 
 func PackageDeleteRequest(fileName string) *messages.Wrapper {
-	msg := messages.DeleteRequest{FileName: fileName}
+	msg := messages.DeleteRequest{
+		FileName: fileName}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_DeleteRequestMessage{DeleteRequestMessage: &msg},
+		Msg: &messages.Wrapper_DeleteRequestMessage{
+			DeleteRequestMessage: &msg},
 	}
 	log.Println("Sending delete request")
 	return wrapper
@@ -136,11 +134,17 @@ func PackageDeleteRequest(fileName string) *messages.Wrapper {
 
 func PackagePutRequestChunk(currentChunk string, metadata *messages.Metadata, chunkCheckSum string, numBytes int, forwardingList []string) *messages.Wrapper {
 	fileMetadata := metadata
-	chunkMetadata := &messages.ChunkMetadata{ChunkName: currentChunk, ChunkSize: int32(numBytes), ChunkCheckSum: chunkCheckSum}
-
-	msg := messages.PutRequest{Metadata: fileMetadata, ChunkMetadata: chunkMetadata, ForwardingList: forwardingList}
+	chunkMetadata := &messages.ChunkMetadata{
+		ChunkName: currentChunk,
+		ChunkSize: int32(numBytes),
+		ChunkCheckSum: chunkCheckSum}
+	msg := messages.PutRequest{
+		Metadata: fileMetadata,
+		ChunkMetadata: chunkMetadata,
+		ForwardingList: forwardingList}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_PutRequestMessage{PutRequestMessage: &msg},
+		Msg: &messages.Wrapper_PutRequestMessage{
+			PutRequestMessage: &msg},
 	}
 	log.Println("Packaging chunk: " + currentChunk)
 	log.Println("Metadata: " + strconv.Itoa(int(msg.Metadata.ChunkSize)))
@@ -149,17 +153,22 @@ func PackagePutRequestChunk(currentChunk string, metadata *messages.Metadata, ch
 }
 
 func PackageGetRequest(fileName string) *messages.Wrapper {
-	msg := messages.GetRequest{FileName: fileName}
+	msg := messages.GetRequest{
+		FileName: fileName}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_GetRequestMessage{GetRequestMessage: &msg},
+		Msg: &messages.Wrapper_GetRequestMessage{
+			GetRequestMessage: &msg},
 	}
 	return wrapper
 }
 
 func PackageCorruptFileNotice(node string, chunk string) *messages.Wrapper {
-	msg := messages.CorruptFileNotice{Node: node, Chunk: chunk}
+	msg := messages.CorruptFileNotice{
+		Node: node,
+		Chunk: chunk}
 	wrapper := &messages.Wrapper{
-		Msg: &messages.Wrapper_CorruptFileNoticeMessage{CorruptFileNoticeMessage: &msg},
+		Msg: &messages.Wrapper_CorruptFileNoticeMessage{
+			CorruptFileNoticeMessage: &msg},
 	}
 	log.Println("Sending corrupt file notice")
 	return wrapper
@@ -187,8 +196,6 @@ func GetParam(message string) string {
 }
 
 func GetChunkIndex(metadata *messages.Metadata, destinationNodes []string) map[string][]string {
-	//LogMetadata(metadata)
-
 	chunkToNodeListIndex := make(map[string][]string)
 	for i := 0; i < int(metadata.NumChunks); i++ {
 		moddedIndex := i % len(destinationNodes)
@@ -214,10 +221,8 @@ func GetChunkIndex(metadata *messages.Metadata, destinationNodes []string) map[s
 
 func LogFileTransferStatus(status bool) {
 	if status {
-		//fmt.Println("Chunk transfer successful")
 		log.Println("Chunk transfer successful")
 	} else {
-		//fmt.Println("Chunk transfer unsuccessful: checksums don't match")
 		log.Println("Chunk transfer unsuccessful: checksums don't match")
 	}
 }
@@ -278,8 +283,14 @@ func SendChunks(metadata *messages.Metadata, destinationNodes []string) {
 		}
 		currentChunk := strconv.Itoa(counter) + "_" + metadata.FileName
 		nodeList := chunkToNodeListIndex[currentChunk]
+
 		forwardingList := nodeList[1:]
-		wrapper := PackagePutRequestChunk(currentChunk, metadata, checkSum, numBytes, forwardingList)
+		wrapper := PackagePutRequestChunk(
+			currentChunk,
+			metadata,
+			checkSum,
+			numBytes,
+			forwardingList)
 		var conn net.Conn
 		for {
 			if conn, err = net.Dial("tcp", nodeList[0]); err != nil {
@@ -367,8 +378,6 @@ func WriteChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Me
 	}
 
 	n, err := file.WriteAt(buffer, int64(i * int(fileMetadata.ChunkSize)))
-	//log.Println("wrote to offset: " + strconv.Itoa(i * int(fileMetadata.ChunkSize)))
-	//log.Println("Index: " + strconv.Itoa(i) + " Chunksize: " + strconv.Itoa(int(fileMetadata.ChunkSize)))
 	if err != nil {
 		log.Println(err.Error())
 	}
@@ -385,8 +394,11 @@ func WriteChunk(chunkMetadata *messages.ChunkMetadata, fileMetadata *messages.Me
 }
 
 func InitiateCorruptFileRecovery(chunk string, node string, context context) {
-	fmt.Println("Downloaded file was corrupt. Corrupt file recovery process initiated. Try download again.")
-	messageHandler := messages.EstablishConnection(context.controllerName + ":" + context.controllerPort)
+	fmt.Println("Downloaded file was corrupt. " +
+		"Corrupt file recovery process initiated. " +
+		"Try download again.")
+	messageHandler := messages.EstablishConnection(
+		context.controllerName + ":" + context.controllerPort)
 	wrapper := PackageCorruptFileNotice(node, chunk)
 	messageHandler.Send(wrapper)
 	messageHandler.Close()
@@ -479,21 +491,29 @@ func HandleInput(scanner *bufio.Scanner, controllerConn net.Conn, context contex
 			HandleConnection(controllerMessageHandler, context)
 		} else if strings.HasPrefix(message, "ls") {
 			directory := GetParam(message)
-			lsRequest := &messages.LSRequest{Directory: directory}
+			lsRequest := &messages.LSRequest{
+				Directory: directory}
 			wrapper := &messages.Wrapper{
-				Msg: &messages.Wrapper_LsRequest{LsRequest: lsRequest},
+				Msg: &messages.Wrapper_LsRequest{
+					LsRequest: lsRequest},
 			}
 			controllerMessageHandler.Send(wrapper)
 			HandleConnection(controllerMessageHandler, context)
 		} else if strings.HasPrefix(message, "info"){
 			infoRequest := &messages.InfoRequest{}
 			wrapper := &messages.Wrapper{
-				Msg: &messages.Wrapper_InfoRequest{InfoRequest: infoRequest},
+				Msg: &messages.Wrapper_InfoRequest{
+					InfoRequest: infoRequest},
 			}
 			controllerMessageHandler.Send(wrapper)
 			HandleConnection(controllerMessageHandler, context)
 		} else if strings.HasPrefix(message, "help"){
-			fmt.Println("Available commands:\nput <file_name>\nget <file_name>\ndelete <file_name>\nls <directory>\ninfo")
+			fmt.Println("Available commands:\n" +
+				"put <file_name>\n" +
+				"get <file_name>\n" +
+				"delete <file_name>\n" +
+				"ls <directory>\n" +
+				"info")
 		} else {
 			fmt.Println("error ")
 		}
