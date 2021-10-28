@@ -98,11 +98,14 @@ func GetChunkToNodesIndex(metadata *messages.Metadata, context context, chunkToN
 		//add to context.chunkToNodeIndex
 		currentChunk := strconv.Itoa(i) + "_" + metadata.FileName
 		chunkToNodeIndex[currentChunk] = []string{node}
+		context.requestsPerNode[node]++
 		//add back up nodes
 		forwardListIndex1 := (i + 1) % numNodes
 		forwardListIndex2 := (i + 2) % numNodes
 		forwardNode1 := destinationNodes[forwardListIndex1]
 		forwardNode2 := destinationNodes[forwardListIndex2]
+		context.requestsPerNode[forwardNode1]++
+		context.requestsPerNode[forwardNode2]++
 		chunkToNodeIndex[currentChunk] = append(chunkToNodeIndex[currentChunk], forwardNode1)
 		chunkToNodeIndex[currentChunk] = append(chunkToNodeIndex[currentChunk], forwardNode2)
 		//add to context.NodeToChunkIndex
@@ -140,14 +143,21 @@ func GetListing(directory string, context context) string {
 }
 
 func GetInfo(context context) ([]string, string, []*messages.KeyValuePair) {
+	//get active nodes
 	var nodes []string
 	context.activeNodes.lock.Lock()
 	for node, _ := range context.activeNodes.cmap {
 		nodes = append(nodes, node)
 	}
 	context.activeNodes.lock.Unlock()
+	//get disk space
 	diskSpace := "100 TB"
-	requests := []*messages.KeyValuePair{{Key: "orion01", Value: "4"}, {Key: "orion02", Value: "5"}}
+	//get requests per page
+	requests := make([]*messages.KeyValuePair, 0)
+	for node, count := range context.requestsPerNode {
+		requests = append(requests, &messages.KeyValuePair{Key: node, Value: strconv.Itoa(count)})
+	}
+	//requests := []*messages.KeyValuePair{{Key: "orion01", Value: "4"}, {Key: "orion02", Value: "5"}}
 	return nodes, diskSpace, requests
 }
 
@@ -200,8 +210,9 @@ func FindChunks(fileName string, context context) locationResult {
 		log.Println("File [" + fileName + "] located at the following locations:")
 		for chunk, nodes := range chunkToNodeMap {
 			log.Print(chunk + " @ ")
-			for node := range nodes {
-				log.Print(" " + nodes[node])
+			for i := range nodes {
+				log.Print(" " + nodes[i])
+				context.requestsPerNode[nodes[i]]++
 			}
 			log.Println()
 		}
@@ -339,6 +350,7 @@ func RecordHeartBeat(node string, context context) {
 	context.activeNodes.lock.Lock()
 	if _, present := context.activeNodes.cmap[node]; !present {
 		log.Println(node + " registered with controller")
+		context.requestsPerNode[node] = 0
 		context.activeNodes.cmap[node] = 1
 		context.nodeToChunksIndex[node] = make([]string, 0)
 		//for ts
@@ -458,6 +470,8 @@ func UpdateIndexes(context context, receiver string, chunk string) {
 	nodeList := chunkToNodeIndex[chunk]
 	nodeList = append(nodeList, receiver)
 	chunkToNodeIndex[chunk] = nodeList //redundant?
+
+	context.requestsPerNode[receiver]++
 }
 
 func FindReceiver(nodeList []string, activeNodes *ConcurrentMap) (string, bool) {
@@ -565,7 +579,9 @@ func InitializeContext() (context, error) {
 	nodeMap := make(map[string]int)
 	lock := sync.RWMutex{}
 	activeNodes := &ConcurrentMap{nodeMap, lock}
+	requestsPerNode := make(map[string]int)
 	return context{activeNodes: activeNodes,
+		requestsPerNode: requestsPerNode,
 		nodeToChunksIndex: make(map[string][]string),
 		fileToChunkToNodesIndex: make(map[string]map[string][]string),
 		bloomFilter: make(map[string]int),
@@ -581,6 +597,7 @@ func HandleArgs() (string, string) {
 
 type context struct {
 	activeNodes *ConcurrentMap
+	requestsPerNode map[string]int
 	nodeToChunksIndex map[string][]string
 	fileToChunkToNodesIndex map[string]map[string][]string
 	bloomFilter map[string]int
@@ -593,11 +610,8 @@ type context struct {
 	//[   ]Viewing the node list, available disk space, and requests per node.
 
 	//TODO - details
-	//[   ] move to disk
 	//node -> [chunk01, chunk02] (if a node goes down, we know we need to duplicate these chunks
 	//nodeToChunksIndex
-
-	//[   ] move to disk
 	//chunk -> [node1, node2, node3] (if we need to duplicate chunks, we know where to get them
 	//fileToChunkToNodesIndex moves to files in ls directory, add lines to file for every chunk (chunk, node, node, node
 
@@ -617,7 +631,6 @@ func (cmap *ConcurrentMap) Put(k string, v int) {
 	cmap.cmap[k] = v
 	cmap.lock.Unlock()
 }
-
 
 func (cmap *ConcurrentMap) Get(k string) (int, bool) {
 	cmap.lock.Lock()
