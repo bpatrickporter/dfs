@@ -265,14 +265,19 @@ func PackageDeleteResponse(result locationResult) *messages.Wrapper {
 	return wrapper
 }
 
-func PackageGetResponse(result locationResult) *messages.Wrapper {
+func PackageGetResponse(result locationResult, context context) *messages.Wrapper {
 	chunks := make([]string, 0)
 	nodes := make([]string, 0)
 
 	if result.fileExists {
 		for chunk, nodeList := range result.chunkLocation {
 			chunks = append(chunks, chunk)
-			nodes = append(nodes, nodeList[0])
+			for node := range nodeList {
+				if IsActive(nodeList[node], context) {
+					nodes = append(nodes, nodeList[node])
+					break
+				}
+			}
 		}
 		log.Println("Sending response with the following node locations: ")
 		for i := range chunks {
@@ -313,6 +318,13 @@ func PackageInfoResponse(nodes []string, diskSpace string, requestsPerNode []*me
 	return wrapper
 }
 
+func IsActive(node string, context context) bool {
+	context.activeNodes.lock.Lock()
+	_, status := context.activeNodes.cmap[node]
+	context.activeNodes.lock.Unlock()
+	return status
+}
+
 func DeleteFileFromIndexes(fileName string, context context) {
 	delete(context.fileToChunkToNodesIndex, fileName)
 	localDirectory := context.lsDirectory + fileName
@@ -350,8 +362,12 @@ func AnalyzeHeartBeats(context context) {
 					go InitiateRecovery(node, context)
 					//remove node from counts and from active nodes
 					delete(context.activeNodes.cmap, node)
-					context.activeNodes.Delete(node)
 					log.Println("Node " + node + " is offline")
+					log.Println("Removed " + node + " from active nodes list")
+					log.Println("Active nodes:")
+					for node, _ := range context.activeNodes.cmap {
+						log.Println(node)
+					}
 				} else {
 					//node isn't down, update counts
 					counts[node] = heartBeats
@@ -501,10 +517,13 @@ func FindReceiver(nodeList []string, activeNodes *ConcurrentMap) (string, bool) 
 			}
 		}
 		if foundReceiver {
+			activeNodes.lock.Unlock()
+			log.Println("Found receiver: " + node)
 			return node, foundReceiver
 		}
 	}
 	activeNodes.lock.Unlock()
+	log.Println("No receiver found")
 	return "", foundReceiver
 }
 
@@ -538,7 +557,7 @@ func HandleConnection(conn net.Conn, context context) {
 			} else {
 				log.Println("file doesn't exist")
 			}
-			wrapper := PackageGetResponse(results)
+			wrapper := PackageGetResponse(results, context)
 			messageHandler.Send(wrapper)
 		case *messages.Wrapper_DeleteRequestMessage:
 			log.Println("Delete request message received")
