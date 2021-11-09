@@ -1,0 +1,11 @@
+Retrospective
+
+1. I continued making commits on Project 1 for 13 days after the due date.
+2. I don’t know that I would do anything differently. I’m not familiar with any languages or libraries that I think I could do this with any easier than we did with Go and Protocol Buffers. 
+3. Things I would include if I were to extend Project 1
+    a. My project doesn’t include support for saving files in nested directories. I would include this. 
+    b. Currently my system can recover if nodes go down but NOT if they go down while in the middle of transferring a file. I would think about how to solve this problem. 
+    c. Currently if a node goes down and then rejoins the system there is no load rebalancing done. I would implement this. 
+4. I probably spent 60 hours completing this project. A lot of time was spent getting familiar with Go as well as debugging issues that came up when moving testing from my local machine to the orion cluster.
+5. I learned a lot about Go and Protocol Buffers in this project. If I were to change the project I would split it into two projects. The first part of the project would be getting chunked file transfer working on the orion cluster with the large test files and verifying checksums match. 
+6. I worked alone. 
